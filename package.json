@@ -1,0 +1,53 @@
+{
+  "name": "@zodal/ui-vanilla",
+  "version": "0.1.0",
+  "description": "zodal UI renderer package for vanilla HTML/JS DOM elements",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@zodal/core": "^0.1.0",
+    "@zodal/ui": "^0.1.0"
+  },
+  "devDependencies": {
+    "@zodal/core": "^0.1.0",
+    "@zodal/ui": "^0.1.0",
+    "jsdom": "^26.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/i2mint/zodal-ui-vanilla.git"
+  },
+  "keywords": [
+    "zodal",
+    "renderer",
+    "vanilla",
+    "ui",
+    "dom",
+    "html"
+  ],
+  "packageManager": "pnpm@9.15.0"
+}
