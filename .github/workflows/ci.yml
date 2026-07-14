@@ -26,10 +26,41 @@ jobs:
       - run: pnpm build
       - run: pnpm test
 
-  publish:
-    needs: validate
+  gate:
+    name: Release gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && (contains(github.event.head_commit.message, '[publish]') || contains(github.event.head_commit.message, '[force publish]'))
+    outputs:
+      publish: ${{ steps.subject.outputs.publish }}
+      force: ${{ steps.subject.outputs.force }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Only the commit SUBJECT (first line) may arm a release. The previous gate matched the
+      # whole commit message, so a commit that merely *mentioned* the marker in its body --
+      # such as one documenting this very workflow -- published to npm for real.
+      #
+      # The subject is read with git rather than interpolated from the event payload, so an
+      # arbitrary commit message can never be spliced into this shell.
+      - id: subject
+        run: |
+          set -euo pipefail
+          subject=$(git log -1 --pretty=%s)
+          publish=false
+          force=false
+          case "$subject" in
+            *'[force publish]'*) publish=true; force=true ;;
+            *'[publish]'*)       publish=true ;;
+          esac
+          echo "subject: $subject"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "force=$force" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: [validate, gate]
+    runs-on: ubuntu-latest
+    if: needs.gate.outputs.publish == 'true'
     steps:
       - uses: actions/checkout@v4
 
