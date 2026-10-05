@@ -36,6 +36,8 @@ zodal's core packages (`@zodal/core`, `@zodal/store`, `@zodal/ui`) are headless 
 
 ## Decision 6: Peer ranges go to the next MAJOR, not the next minor
 
+> **Superseded** by zodal's [`docs/versioning.md`](https://github.com/i2mint/zodal/blob/main/docs/versioning.md). Peers are now a caret on the lowest version needed (`^0.2.1`). The failure this decision guarded against, a core minor orphaning this package, is now caught on the core side: zodal's release CI runs `scripts/check-satellite-peers.mjs` and refuses a core release that a published satellite's peer range would newly reject, so satellites are widened (`^0.2.1 || ^0.3.0`) before the breaking minor ships. A range to the next major would accept a breaking `0.3.0` and move the break from install time to runtime in an app. The original text is kept below for history.
+
 **Choice**: `peerDependencies` on `@zodal/core` and `@zodal/ui` are `>=X.Y.0 <1.0.0`, not `^X.Y.0`.
 
 **Rationale**: npm's caret is *exact-minor* below 1.0 — `^0.1.0` resolves to `>=0.1.0 <0.2.0`. So while the core packages are pre-1.0, a caret peer turns every core **minor** release into a hard `ERESOLVE` install failure for this package, even when nothing it uses has changed. That is exactly what happened when core/ui went to 0.2.0: this renderer typechecked, built, and passed its whole suite against 0.2.0, yet `npm install` refused it — the only non-React renderer in the ecosystem was uninstallable for a version range, not an incompatibility.

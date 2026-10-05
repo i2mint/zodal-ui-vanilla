@@ -37,7 +37,7 @@ Before working on this package, read the zodal UI renderer skill:
 
 ## Dependencies
 
-- `@zodal/core` and `@zodal/ui` as peer dependencies
+- `@zodal/core` and `@zodal/ui` as peer dependencies, caret on the lowest version needed (`^0.2.1`; see zodal's `docs/versioning.md`, which supersedes design decision 6)
 - NO react, NO react-dom
 - Build: tsup (dual CJS/ESM + .d.ts)
 - Test: vitest with jsdom environment
