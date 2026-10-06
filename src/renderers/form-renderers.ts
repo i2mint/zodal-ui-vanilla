@@ -10,6 +10,7 @@ import type { FormFieldProps } from '../types.js';
 import { copyField, installCopyStyles } from '../copy.js';
 import { attachFieldHistory, type FieldHistoryHandle } from '../field-history.js';
 import { fieldHistoryOf } from '../history-types.js';
+import { tagInput } from './tag-renderers.js';
 
 /** Words that mark a field name as a secret (a local, cautious stand-in for `@zodal/core`'s `isSecretName`, which npm 0.2.0 lacks). */
 const SECRET_WORD = /^(password|passwd|pwd|passphrase|secret|secrets|credential|credentials|otp|pin|cvv|cvc|ssn|token|tokens|apikey|privatekey|accesskey|clientsecret)$/;
@@ -281,5 +282,17 @@ export const formRenderers: RendererEntry<FormRenderer>[] = [
     tester: (field, ctx) => ctx.mode === 'form' && field.zodType === 'date' ? PRIORITY.DEFAULT : -1,
     renderer: dateInput,
     name: 'DateInput',
+  },
+  {
+    // Array fields ('tags' form fields), unless another widget is declared; an
+    // explicit `editWidget: 'tags'` asks for this widget on any field.
+    tester: (field, ctx) => {
+      if (ctx.mode !== 'form') return -1;
+      const widget = (field as any).editWidget;
+      if (widget === 'tags') return PRIORITY.OVERRIDE;
+      return field.zodType === 'array' && !widget ? PRIORITY.DEFAULT : -1;
+    },
+    renderer: tagInput,
+    name: 'TagInput',
   },
 ];
