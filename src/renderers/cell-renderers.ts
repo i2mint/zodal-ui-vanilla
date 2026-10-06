@@ -7,6 +7,7 @@ import { PRIORITY } from '@zodal/ui';
 import type { RendererEntry } from '@zodal/ui';
 import { el } from '../dom.js';
 import type { CellProps } from '../types.js';
+import { chipCell } from './tag-renderers.js';
 
 function textCell({ value, config }: CellProps): HTMLElement {
   const str = String(value ?? '');
@@ -44,11 +45,6 @@ function badgeCell({ value, config }: CellProps): HTMLElement {
   }, str);
 }
 
-function arrayCell({ value }: CellProps): HTMLElement {
-  if (!Array.isArray(value)) return el('span', { class: 'zodal-cell zodal-muted' }, '\u2014');
-  return el('span', { class: 'zodal-cell zodal-cell-array' }, value.join(', '));
-}
-
 export type CellRenderer = (props: CellProps) => HTMLElement;
 
 export const cellRenderers: RendererEntry<CellRenderer>[] = [
@@ -84,7 +80,8 @@ export const cellRenderers: RendererEntry<CellRenderer>[] = [
   },
   {
     tester: (field, ctx) => ctx.mode === 'cell' && field.zodType === 'array' ? PRIORITY.DEFAULT : -1,
-    renderer: arrayCell,
+    // Chips with "+N" overflow (see tag-renderers.ts); the name is kept for lookups.
+    renderer: chipCell,
     name: 'ArrayCell',
   },
   {

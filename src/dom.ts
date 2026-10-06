@@ -1,7 +1,33 @@
 /**
- * Internal DOM element factory.
- * Replaces React.createElement with native DOM API.
+ * Internal DOM helpers: an element factory replacing React.createElement with the
+ * native DOM API, and the inline style that hides text visually while keeping it
+ * for assistive tech (live regions, list separators).
  */
+
+/**
+ * Visually hidden but read by screen readers. Inline rather than a class: it is
+ * functional, not cosmetic, so it must work without the app's stylesheet.
+ */
+export const VISUALLY_HIDDEN: Partial<CSSStyleDeclaration> = {
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  padding: '0',
+  margin: '-1px',
+  overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)',
+  whiteSpace: 'nowrap',
+  border: '0',
+};
+
+let idCounter = 0;
+
+/** A document-unique id with a readable prefix. */
+export function uniqueId(prefix: string): string {
+  idCounter += 1;
+  return `${prefix}-${idCounter}`;
+}
+
 export function el(
   tag: string,
   attrs?: Record<string, any> | null,

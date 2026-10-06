@@ -7,6 +7,7 @@ import { PRIORITY } from '@zodal/ui';
 import type { RendererEntry } from '@zodal/ui';
 import { el } from '../dom.js';
 import type { FilterFieldProps } from '../types.js';
+import { chipFilter } from './tag-renderers.js';
 
 function textFilter({ field, config }: FilterFieldProps): HTMLElement {
   return el('input', {
@@ -111,5 +112,13 @@ export const filterRenderers: RendererEntry<FilterRenderer>[] = [
     tester: (field, ctx) => ctx.mode === 'filter' && field.zodType === 'boolean' ? PRIORITY.DEFAULT : -1,
     renderer: booleanFilter,
     name: 'BooleanFilter',
+  },
+  {
+    // `contains` on an array is element membership; on a string it is a substring
+    // match, which stays with the text filter.
+    tester: (field, ctx) =>
+      ctx.mode === 'filter' && (field as any).filterable === 'contains' && field.zodType === 'array' ? PRIORITY.DEFAULT : -1,
+    renderer: chipFilter,
+    name: 'ChipFilter',
   },
 ];

@@ -43,3 +43,21 @@ zodal's core packages (`@zodal/core`, `@zodal/store`, `@zodal/ui`) are headless 
 **Rationale**: npm's caret is *exact-minor* below 1.0 — `^0.1.0` resolves to `>=0.1.0 <0.2.0`. So while the core packages are pre-1.0, a caret peer turns every core **minor** release into a hard `ERESOLVE` install failure for this package, even when nothing it uses has changed. That is exactly what happened when core/ui went to 0.2.0: this renderer typechecked, built, and passed its whole suite against 0.2.0, yet `npm install` refused it — the only non-React renderer in the ecosystem was uninstallable for a version range, not an incompatibility.
 
 A range to the next major says what is actually meant: "works across the 0.x line". A genuine break gets caught by CI (typecheck + build + test all run against the current core), and the floor moves up when a real minimum appears.
+
+## Decision 7: Tag widgets keep their own state inside the element
+
+**Choice**: The tag input and the type-ahead chip filter update their own chips, draft and suggestion list in place, and report every change through `field.onChange` with the whole new value (an array for the form, a `FilterCondition` or `undefined` for the filter).
+
+**Rationale**: A chip input's interaction (type, pick, add, remove, keep focus, keep the half-typed draft) cannot survive the swap-the-element cycle of Decision 5: re-rendering on each add would drop focus and the draft. So these widgets are the one place where the element outlives a change. The consumer still owns the value; it need not re-render on `onChange`, and if it does, the new element starts from the value it passes in.
+
+## Decision 8: `field` stays the value binding; the affordance travels as `affordance`
+
+**Choice**: Form and filter props are `@zodal/ui`'s `FieldRenderProps` (`config`, optional `context`) with `field` kept as the `{ value, onChange }` binding this package has always used, and the resolved affordance as an optional `affordance` (`BoundFieldProps<C>` in `src/types.ts`).
+
+**Rationale**: `FieldRenderProps.field` is the affordance, which collides with this package's `field` binding. Renaming the binding would break every existing caller; keeping it and adding `context` (which carries `suggest`) and `affordance` as optional props keeps old call sites working and gets the context to the widgets.
+
+## Decision 9: The chip filter emits `arrayContainsAny`, even for one value
+
+**Choice**: `toContainsFilter(name, values)` returns `{ field, operator: 'arrayContainsAny', value: [...] }`, or `undefined` when nothing is selected.
+
+**Rationale**: OR within one field is the faceted-filter convention (AND across fields is the consumer's `{ and: [...] }`), and the filter says so in words ("Tags is any of"). For a single value it equals `arrayContains`, so one operator loses nothing and keeps the value's shape stable: it never flips between a scalar and an array as chips are added or removed, which keeps app state, URLs and backend translation simple. Every adapter that supports `contains` filters translates `arrayContainsAny` (in-memory `filterToFunction`, Supabase `ov`/`&&`, HTTP).

@@ -7,6 +7,7 @@ import { PRIORITY } from '@zodal/ui';
 import type { RendererEntry } from '@zodal/ui';
 import { el } from '../dom.js';
 import type { FormFieldProps } from '../types.js';
+import { tagInput } from './tag-renderers.js';
 
 function textInput({ field, config }: FormFieldProps): HTMLElement {
   return el('div', { class: 'zodal-field' },
@@ -129,5 +130,17 @@ export const formRenderers: RendererEntry<FormRenderer>[] = [
     tester: (field, ctx) => ctx.mode === 'form' && field.zodType === 'date' ? PRIORITY.DEFAULT : -1,
     renderer: dateInput,
     name: 'DateInput',
+  },
+  {
+    // Array fields ('tags' form fields), unless another widget is declared; an
+    // explicit `editWidget: 'tags'` asks for this widget on any field.
+    tester: (field, ctx) => {
+      if (ctx.mode !== 'form') return -1;
+      const widget = (field as any).editWidget;
+      if (widget === 'tags') return PRIORITY.OVERRIDE;
+      return field.zodType === 'array' && !widget ? PRIORITY.DEFAULT : -1;
+    },
+    renderer: tagInput,
+    name: 'TagInput',
   },
 ];
