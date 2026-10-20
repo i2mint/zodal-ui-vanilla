@@ -107,6 +107,31 @@ describe('options-form fieldset parity with zodal-ui-shadcn (#11)', () => {
     expect(node.outerHTML).not.toContain('stored-key');
   });
 
+  it('keeps the stored secret when the host re-renders with each echoed value', () => {
+    let value: unknown = { user: 'u', key: 'stored-key' };
+    let node = render(creds, value, () => {});
+    const type = (text: string) => {
+      const secret = node.querySelector('input[type="password"]') as HTMLInputElement;
+      secret.value = text;
+      secret.dispatchEvent(new Event('input'));
+    };
+    const host = (v: unknown) => {
+      value = v;
+      node = render(creds, value, host); // the host redraws from its state after every change
+    };
+    node = render(creds, value, host);
+    type('a');
+    expect(value).toEqual({ user: 'u', key: 'a' });
+    type('ab');
+    type('');
+    expect(value).toEqual({ user: 'u', key: 'stored-key' });
+    // A value from outside (a save, a load) becomes the new stored one.
+    host({ user: 'u', key: 'saved' });
+    type('x');
+    type('');
+    expect(value).toEqual({ user: 'u', key: 'saved' });
+  });
+
   it('children resolve through the registry the fieldset is given', () => {
     const custom = createVanillaRegistry();
     custom.register({

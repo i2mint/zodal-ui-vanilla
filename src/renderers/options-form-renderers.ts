@@ -25,11 +25,18 @@ export interface OptionsFieldProps extends FormFieldProps {
 const asObject = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Record<string, unknown>) } : {};
 
+/** For each value a fieldset emitted, the outside value its edits started from (by identity: a
+ *  host that copies the value it is handed back loses the link, and a copy counts as outside). */
+const EMITTED_FROM = new WeakMap<object, Record<string, unknown>>();
+
 /** A nested object: its fields inside a `<fieldset>`, each bound to its key of the value. */
 function fieldsetInput({ field, config, registry, renderField }: OptionsFieldProps): HTMLElement {
-  // The value as it came in (what a secret child falls back to), and the latest value, so edits
-  // to two children without a re-render in between both survive.
-  const stored = asObject(field.value);
+  // The value as it came from outside (what an emptied secret child falls back to): when the host
+  // re-renders with a value this fieldset emitted (the echo of an edit), the outside value is the
+  // one that edit started from, not the echo. And the latest value, so edits to two children
+  // without a re-render in between both survive.
+  const echoed = field.value && typeof field.value === 'object' ? EMITTED_FROM.get(field.value) : undefined;
+  const stored = echoed ?? asObject(field.value);
   let current = asObject(field.value);
   const draw = renderField ?? defaultRenderField;
   const children = (config.fields ?? []).filter((f) => !f.hidden).map((child) => {
@@ -45,6 +52,7 @@ function fieldsetInput({ field, config, registry, renderField }: OptionsFieldPro
         onChange: (v: unknown) => {
           // A secret emptied again means "no new value": keep the stored one, never drop it.
           current = { ...current, [key]: secret && v === undefined ? stored[key] : v };
+          EMITTED_FROM.set(current, stored);
           field.onChange(current);
         },
       },
