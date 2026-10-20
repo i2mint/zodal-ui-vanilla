@@ -112,6 +112,8 @@ for (const f of fields) {
 }
 ```
 
+A fieldset draws its children through the `registry` you pass in its props (so your overrides apply inside it), else through `renderField`, else through this package's default registry. A disabled fieldset disables every child, and a secret child that is typed and then emptied keeps the stored secret.
+
 The `OptionsFormField` type is declared here structurally (`src/options-form-types.ts`), like `ViewConfig`. Classes: `.zodal-fieldset`, `.zodal-code-note`.
 
 ## Styling
