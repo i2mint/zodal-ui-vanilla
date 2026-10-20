@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createVanillaRegistry, optionsFieldAffordance, type OptionsFormField } from '../src/index.js';
 import type { FormRenderer } from '../src/renderers/form-renderers.js';
 
@@ -83,5 +83,95 @@ describe('options-form widget types (#6)', () => {
   it('never resolves a secret or a code-supplied field to an editable input', () => {
     expect(top({ ...s3Options[0], type: 'text', secret: true })).toBe('PasswordInput');
     expect(top({ ...s3Options[0], type: 'text', suppliedInCode: true })).toBe('CodeNote');
+  });
+});
+
+describe('options-form fieldset parity with zodal-ui-shadcn (#11)', () => {
+  const creds: OptionsFormField = {
+    ...base, name: 'creds', path: ['creds'], label: 'Credentials', type: 'fieldset', zodType: 'object',
+    fields: [
+      { ...base, name: 'creds.user', path: ['creds', 'user'], label: 'User', type: 'text', zodType: 'string' },
+      { ...base, name: 'creds.key', path: ['creds', 'key'], label: 'Key', type: 'password', zodType: 'string', secret: true },
+    ],
+  };
+
+  it('a secret typed and then emptied inside a fieldset keeps the stored secret', () => {
+    const changes: unknown[] = [];
+    const node = render(creds, { user: 'u', key: 'stored-key' }, (v) => changes.push(v));
+    const secret = node.querySelector('input[type="password"]') as HTMLInputElement;
+    secret.value = 'typed';
+    secret.dispatchEvent(new Event('input'));
+    secret.value = '';
+    secret.dispatchEvent(new Event('input'));
+    expect(changes).toEqual([{ user: 'u', key: 'typed' }, { user: 'u', key: 'stored-key' }]);
+    expect(node.outerHTML).not.toContain('stored-key');
+  });
+
+  it('keeps the stored secret when the host re-renders with each echoed value', () => {
+    let value: unknown = { user: 'u', key: 'stored-key' };
+    let node = render(creds, value, () => {});
+    const type = (text: string) => {
+      const secret = node.querySelector('input[type="password"]') as HTMLInputElement;
+      secret.value = text;
+      secret.dispatchEvent(new Event('input'));
+    };
+    const host = (v: unknown) => {
+      value = v;
+      node = render(creds, value, host); // the host redraws from its state after every change
+    };
+    node = render(creds, value, host);
+    type('a');
+    expect(value).toEqual({ user: 'u', key: 'a' });
+    type('ab');
+    type('');
+    expect(value).toEqual({ user: 'u', key: 'stored-key' });
+    // A value from outside (a save, a load) becomes the new stored one.
+    host({ user: 'u', key: 'saved' });
+    type('x');
+    type('');
+    expect(value).toEqual({ user: 'u', key: 'saved' });
+  });
+
+  it('children resolve through the registry the fieldset is given', () => {
+    const custom = createVanillaRegistry();
+    custom.register({
+      tester: (f: { editWidget?: string }) => (f.editWidget === 'text' ? 10_000 : -1),
+      renderer: (() => Object.assign(document.createElement('div'), { className: 'host-text' })) as FormRenderer,
+      name: 'HostText',
+    });
+    const fieldset = registry.resolve(optionsFieldAffordance(creds), { mode: 'form' }) as FormRenderer;
+    const node = (fieldset as (p: unknown) => HTMLElement)({ field: { value: {}, onChange: () => {} }, config: creds, registry: custom });
+    expect(node.querySelector('.host-text')).not.toBeNull();
+  });
+
+  it('a disabled fieldset passes disabled to every child config', () => {
+    const seen: boolean[] = [];
+    const fieldset = registry.resolve(optionsFieldAffordance(creds), { mode: 'form' }) as FormRenderer;
+    (fieldset as (p: unknown) => HTMLElement)({
+      field: { value: {}, onChange: () => {} },
+      config: { ...creds, disabled: true },
+      renderField: (p: { config: OptionsFormField }) => {
+        seen.push(p.config.disabled);
+        return document.createElement('div');
+      },
+    });
+    expect(seen).toEqual([true, true]);
+  });
+
+  it('an array value is not edited as an object', () => {
+    const changes: unknown[] = [];
+    const node = render(creds, ['a', 'b'], (v) => changes.push(v));
+    const user = node.querySelector('input[type="text"], input:not([type])') as HTMLInputElement;
+    expect(user.value).toBe('');
+    user.value = 'x';
+    user.dispatchEvent(new Event('input'));
+    expect(changes).toEqual([{ user: 'x' }]);
+  });
+
+  it('without a registry, a fieldset says how to fix it', async () => {
+    vi.resetModules();
+    const { optionsFormRenderers } = await import('../src/renderers/options-form-renderers.js');
+    const fieldset = optionsFormRenderers[0].renderer as (p: unknown) => HTMLElement;
+    expect(() => fieldset({ field: { value: {}, onChange: () => {} }, config: creds })).toThrow(/pass `registry`/);
   });
 });

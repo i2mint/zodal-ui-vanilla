@@ -12,27 +12,47 @@ import type { FormFieldProps } from '../types.js';
 import { optionsFieldAffordance, type OptionsFormField } from '../options-form-types.js';
 import type { FormRenderer } from './form-renderers.js';
 
-/** Props of an options-form renderer: `renderField` draws a fieldset's children. */
+/** Props of an options-form renderer; a fieldset passes `registry` and `renderField` to its children. */
 export interface OptionsFieldProps extends FormFieldProps {
   config: OptionsFormField;
-  /** Draws one child field; default: this package's registry. */
+  /** The registry a fieldset resolves its children with; default: `createVanillaRegistry()`. */
+  registry?: RendererRegistry<unknown>;
+  /** Draws one child field; default: the renderer `registry` resolves. */
   renderField?: (props: OptionsFieldProps) => HTMLElement;
 }
 
+/** A copy of an object value; anything else (an array, a primitive) is no object to edit. */
+const asObject = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Record<string, unknown>) } : {};
+
+/** For each value a fieldset emitted, the outside value its edits started from (by identity: a
+ *  host that copies the value it is handed back loses the link, and a copy counts as outside). */
+const EMITTED_FROM = new WeakMap<object, Record<string, unknown>>();
+
 /** A nested object: its fields inside a `<fieldset>`, each bound to its key of the value. */
-function fieldsetInput({ field, config, renderField }: OptionsFieldProps): HTMLElement {
-  // The latest value, so edits to two children without a re-render in between both survive.
-  let current = (field.value && typeof field.value === 'object' ? { ...field.value } : {}) as Record<string, unknown>;
+function fieldsetInput({ field, config, registry, renderField }: OptionsFieldProps): HTMLElement {
+  // The value as it came from outside (what an emptied secret child falls back to): when the host
+  // re-renders with a value this fieldset emitted (the echo of an edit), the outside value is the
+  // one that edit started from, not the echo. And the latest value, so edits to two children
+  // without a re-render in between both survive.
+  const echoed = field.value && typeof field.value === 'object' ? EMITTED_FROM.get(field.value) : undefined;
+  const stored = echoed ?? asObject(field.value);
+  let current = asObject(field.value);
   const draw = renderField ?? defaultRenderField;
   const children = (config.fields ?? []).filter((f) => !f.hidden).map((child) => {
     const key = child.path?.[child.path.length - 1] ?? child.name.split('.').pop()!;
+    const secret = optionsFieldAffordance(child).editWidget === 'password';
     return draw({
-      config: child,
+      // A disabled fieldset disables every child, native control or not.
+      config: config.disabled && !child.disabled ? { ...child, disabled: true } : child,
+      registry,
       renderField,
       field: {
         value: current[key],
         onChange: (v: unknown) => {
-          current = { ...current, [key]: v };
+          // A secret emptied again means "no new value": keep the stored one, never drop it.
+          current = { ...current, [key]: secret && v === undefined ? stored[key] : v };
+          EMITTED_FROM.set(current, stored);
           field.onChange(current);
         },
       },
@@ -83,18 +103,24 @@ export const optionsFormRenderers: RendererEntry<FormRenderer>[] = [
   { tester: widget('code'), renderer: codeNote as FormRenderer, name: 'CodeNote' },
 ];
 
-/** Draw a child through this package's registry (imported lazily: the registry imports this module). */
+/** Draw a child with the renderer its registry resolves (the given one, else this package's). */
 function defaultRenderField(props: OptionsFieldProps): HTMLElement {
-  const renderer = registry().resolve(optionsFieldAffordance(props.config), { mode: 'form' }) as FormRenderer;
+  const renderer = (props.registry ?? defaultRegistry()).resolve(optionsFieldAffordance(props.config), { mode: 'form' }) as FormRenderer;
   return renderer(props);
 }
 
 let factory: (() => RendererRegistry<unknown>) | undefined;
 let cached: RendererRegistry<unknown> | undefined;
-function registry(): RendererRegistry<unknown> {
-  return (cached ??= factory!());
+function defaultRegistry(): RendererRegistry<unknown> {
+  if (!factory) {
+    throw new Error(
+      'FieldsetInput has no registry to draw its fields with: pass `registry` (or `renderField`), '
+      + "or import createVanillaRegistry from '@zodal/ui-vanilla'.",
+    );
+  }
+  return (cached ??= factory());
 }
-/** Wired by `registry.ts`, so this module needs no import cycle. */
+/** Wired by `registry.ts` (built lazily: the registry imports this module). */
 export function setDefaultRegistryFactory(make: () => RendererRegistry<unknown>): void {
   factory = make;
 }
