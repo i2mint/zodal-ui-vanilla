@@ -73,6 +73,31 @@ for (const col of columns) {
 | RangeFilter | range | Min/Max number inputs |
 | BooleanFilter | boolean | All/Yes/No dropdown |
 
+## Collection views: a list or a grid, grouped and collapsible
+
+`renderCollectionView` draws the whole collection from a `ViewConfig` (`toViewConfig(collection, 'list' | 'grid')` in `@zodal/ui`): list rows or grid cards showing each item's image, label, badges and secondary text, bucketed into groups whose headers collapse and expand when the collection declares `groupBy.collapsible`.
+
+```typescript
+import { toViewConfig } from '@zodal/ui';
+import { renderCollectionView } from '@zodal/ui-vanilla';
+
+const view = toViewConfig(instruments, 'grid');
+const draw = () => {
+  const { collapsedGroups, expandedGroups } = viewState.get();
+  container.replaceChildren(renderCollectionView({
+    items, config: view, collapsedGroups, expandedGroups,
+    onToggleGroup: (id) => viewState.toggleGroup(id),       // persist the collapse
+    onOperation: (op, item) => run(op.name, item),          // edit, delete, declared item operations
+    onSelect: (id, selected) => select(id, selected), selectedIds,
+    onCollectionOperation: (op, selected) => run(op.name, selected),
+  }));
+};
+```
+
+`renderListItem` and `renderGridCard` draw one item; `renderValue` lets a registry cell renderer draw a field. A group header click toggles the group in place and calls `onToggleGroup`. Classes: `.zodal-view`, `.zodal-group`, `.zodal-group-header`, `.zodal-list-item`, `.zodal-card`, `.zodal-badge`, `.zodal-view-secondary`, `.zodal-view-actions`, `.zodal-view-toolbar`.
+
+The `ViewConfig` type is declared here structurally (`src/view-types.ts`), and `groupItems` is a local copy, because the `@zodal/ui` on npm this package builds against predates `toViewConfig`; any object of that shape works.
+
 ## Styling
 
 All elements use `.zodal-*` CSS class names. Style them however you want:
