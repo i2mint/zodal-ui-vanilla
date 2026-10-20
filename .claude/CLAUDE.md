@@ -12,10 +12,13 @@ src/
   types.ts             — Shared prop types (CellProps, FormFieldProps, FilterFieldProps)
   registry.ts          — createVanillaRegistry() factory + VanillaRenderer type
   dom.ts               — Internal el() DOM helper (NOT exported)
+  view-types.ts        — Structural ViewConfig (mirror of @zodal/ui's toViewConfig output; npm 0.2.0 lacks it)
+  group-items.ts       — Local copy of @zodal/ui groupItems/groupId (same reason)
   renderers/
     cell-renderers.ts  — Table cell renderers (text, number, boolean, date, badge, array, currency)
     form-renderers.ts  — Form field renderers (text, number, checkbox, select, date)
     filter-renderers.ts — Filter widget renderers (text, select, range, boolean)
+    view-renderers.ts  — Collection view: renderCollectionView, renderListItem, renderGridCard
 tests/
   registry.test.ts     — Registry resolution tests
   renderers.test.ts    — DOM output + event binding tests
