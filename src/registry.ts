@@ -3,6 +3,7 @@ import type { RendererEntry } from '@zodal/ui';
 import { cellRenderers } from './renderers/cell-renderers.js';
 import { formRenderers } from './renderers/form-renderers.js';
 import { filterRenderers } from './renderers/filter-renderers.js';
+import { optionsFormRenderers, setDefaultRegistryFactory } from './renderers/options-form-renderers.js';
 
 /** A vanilla renderer function: takes props, returns an HTMLElement. */
 export type VanillaRenderer = (props: any) => HTMLElement;
@@ -15,6 +16,7 @@ export function createVanillaRegistry() {
   const allRenderers: RendererEntry<VanillaRenderer>[] = [
     ...cellRenderers,
     ...formRenderers,
+    ...optionsFormRenderers,
     ...filterRenderers,
   ];
   for (const entry of allRenderers) {
@@ -22,3 +24,5 @@ export function createVanillaRegistry() {
   }
   return registry;
 }
+
+setDefaultRegistryFactory(createVanillaRegistry);
