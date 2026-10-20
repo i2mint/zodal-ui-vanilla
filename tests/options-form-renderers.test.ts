@@ -52,4 +52,36 @@ describe('options-form widget types (#6)', () => {
     input.dispatchEvent(new Event('input'));
     expect(changes).toEqual([{ attempts: 5, other: true }]);
   });
+
+  it('keeps both edits when two children change without a re-render', () => {
+    const retry: OptionsFormField = {
+      ...s3Options[3],
+      fields: [
+        { ...base, name: 'retry.attempts', path: ['retry', 'attempts'], label: 'Attempts', type: 'number', zodType: 'number' },
+        { ...base, name: 'retry.backoff', path: ['retry', 'backoff'], label: 'Backoff', type: 'number', zodType: 'number' },
+      ],
+    };
+    let latest: unknown;
+    const inputs = render(retry, {}, (v) => (latest = v)).querySelectorAll('input');
+    inputs[0].value = '5';
+    inputs[0].dispatchEvent(new Event('input'));
+    inputs[1].value = '2';
+    inputs[1].dispatchEvent(new Event('input'));
+    expect(latest).toEqual({ attempts: 5, backoff: 2 });
+  });
+
+  it('writes no empty string over a stored secret', () => {
+    const changes: unknown[] = [];
+    const input = render(s3Options[1], 'stored', (v) => changes.push(v)).querySelector('input')!;
+    input.value = 'x';
+    input.dispatchEvent(new Event('input'));
+    input.value = '';
+    input.dispatchEvent(new Event('input'));
+    expect(changes).toEqual(['x', undefined]);
+  });
+
+  it('never resolves a secret or a code-supplied field to an editable input', () => {
+    expect(top({ ...s3Options[0], type: 'text', secret: true })).toBe('PasswordInput');
+    expect(top({ ...s3Options[0], type: 'text', suppliedInCode: true })).toBe('CodeNote');
+  });
 });

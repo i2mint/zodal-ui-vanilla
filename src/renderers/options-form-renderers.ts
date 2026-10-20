@@ -21,16 +21,20 @@ export interface OptionsFieldProps extends FormFieldProps {
 
 /** A nested object: its fields inside a `<fieldset>`, each bound to its key of the value. */
 function fieldsetInput({ field, config, renderField }: OptionsFieldProps): HTMLElement {
-  const value = (field.value && typeof field.value === 'object' ? field.value : {}) as Record<string, unknown>;
+  // The latest value, so edits to two children without a re-render in between both survive.
+  let current = (field.value && typeof field.value === 'object' ? { ...field.value } : {}) as Record<string, unknown>;
   const draw = renderField ?? defaultRenderField;
   const children = (config.fields ?? []).filter((f) => !f.hidden).map((child) => {
-    const key = child.path?.[child.path.length - 1] ?? child.name;
+    const key = child.path?.[child.path.length - 1] ?? child.name.split('.').pop()!;
     return draw({
       config: child,
       renderField,
       field: {
-        value: value[key],
-        onChange: (v: unknown) => field.onChange({ ...((field.value as object) ?? {}), [key]: v }),
+        value: current[key],
+        onChange: (v: unknown) => {
+          current = { ...current, [key]: v };
+          field.onChange(current);
+        },
       },
     });
   });
@@ -54,7 +58,8 @@ function passwordInput({ field, config }: OptionsFieldProps): HTMLElement {
       placeholder: field.value != null && field.value !== '' ? '(unchanged)' : config.placeholder,
       required: config.required && (field.value == null || field.value === ''),
       disabled: config.disabled,
-      onInput: (e: Event) => field.onChange((e.target as HTMLInputElement).value),
+      // Emptied again: no new value (undefined), never '' over the stored secret.
+      onInput: (e: Event) => field.onChange((e.target as HTMLInputElement).value || undefined),
     }),
     config.helpText ? el('p', { class: 'zodal-help' }, config.helpText) : null,
   );
