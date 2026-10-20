@@ -79,11 +79,14 @@ function booleanFilter({ field, config }: FilterFieldProps): HTMLElement {
   return select;
 }
 
+/** Scalar types a text filter can match against; anything else (object, set, array) gets no filter. */
+const TEXT_FILTERABLE_TYPES = ['string', 'number', 'int', 'float', 'bigint', 'enum', 'literal', 'date'];
+
 export type FilterRenderer = (props: FilterFieldProps) => HTMLElement;
 
 export const filterRenderers: RendererEntry<FilterRenderer>[] = [
   {
-    tester: (_, ctx) => ctx.mode === 'filter' ? PRIORITY.FALLBACK : -1,
+    tester: (field, ctx) => ctx.mode === 'filter' && TEXT_FILTERABLE_TYPES.includes(field.zodType) ? PRIORITY.FALLBACK : -1,
     renderer: textFilter,
     name: 'TextFilter (fallback)',
   },

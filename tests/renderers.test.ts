@@ -132,6 +132,20 @@ describe('Form Renderers', () => {
   const checkboxInput = getRenderer(formRenderers, 'CheckboxInput');
   const selectInput = getRenderer(formRenderers, 'SelectInput');
 
+  it('ReadOnlyInput shows objects, sets and bigints as read-only text', () => {
+    const readOnlyInput = getRenderer(formRenderers, 'ReadOnlyInput (fallback)');
+    const value = (v: unknown) => {
+      const input = readOnlyInput({ field: { value: v, onChange: () => {} }, config: mockFormConfig() })
+        .querySelector('input') as HTMLInputElement;
+      expect(input.hasAttribute('readonly')).toBe(true);
+      return input.getAttribute('value');
+    };
+    expect(value({ a: 1, n: 2n })).toBe('{"a":1,"n":"2"}');
+    expect(value(new Set(['x', 'y']))).toBe('x, y');
+    expect(value(12345678901234567890n)).toBe('12345678901234567890');
+    expect(value(undefined)).toBe('');
+  });
+
   it('TextInput creates label + input structure', () => {
     const el = textInput({
       field: { value: 'hi', onChange: () => {} },

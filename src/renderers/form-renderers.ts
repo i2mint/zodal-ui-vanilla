@@ -97,13 +97,42 @@ function dateInput({ field, config }: FormFieldProps): HTMLElement {
   );
 }
 
+/** A value as text, for a field no form renderer can edit (object, set, bigint, ...). */
+function displayValue(value: unknown): string {
+  if (value == null) return '';
+  if (value instanceof Set || Array.isArray(value)) return [...value].map(displayValue).join(', ');
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value, (_key, v) => (typeof v === 'bigint' ? String(v) : v));
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+/** Shows the value without offering to edit it: a text input would write a string back. */
+function readOnlyInput({ field, config }: FormFieldProps): HTMLElement {
+  return el('div', { class: 'zodal-field' },
+    el('label', { for: config.name, class: 'zodal-label' }, config.label),
+    el('input', {
+      id: config.name,
+      type: 'text',
+      value: displayValue(field.value),
+      class: 'zodal-input zodal-input-readonly',
+      readonly: true,
+    }),
+  );
+}
+
 export type FormRenderer = (props: FormFieldProps) => HTMLElement;
 
 export const formRenderers: RendererEntry<FormRenderer>[] = [
   {
     tester: (_, ctx) => ctx.mode === 'form' ? PRIORITY.FALLBACK : -1,
-    renderer: textInput,
-    name: 'TextInput (fallback)',
+    renderer: readOnlyInput,
+    name: 'ReadOnlyInput (fallback)',
   },
   {
     tester: (field, ctx) => ctx.mode === 'form' && field.zodType === 'string' ? PRIORITY.DEFAULT : -1,
