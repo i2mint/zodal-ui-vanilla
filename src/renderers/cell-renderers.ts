@@ -53,7 +53,7 @@ export type CellRenderer = (props: CellProps) => HTMLElement;
 
 export const cellRenderers: RendererEntry<CellRenderer>[] = [
   {
-    tester: () => PRIORITY.FALLBACK,
+    tester: (_, ctx) => ctx.mode === 'cell' ? PRIORITY.FALLBACK : -1,
     renderer: textCell,
     name: 'TextCell (fallback)',
   },

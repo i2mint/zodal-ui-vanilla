@@ -61,6 +61,24 @@ describe('createVanillaRegistry', () => {
     expect(renderer).toBeDefined();
   });
 
+  it('keeps each fallback to its own mode (#2)', () => {
+    const top = (zodType: string, mode: 'cell' | 'form' | 'filter') =>
+      registry.explain(mockField({ zodType, filterable: 'exact' } as any), { mode })[0]?.name;
+    for (const zodType of ['object', 'set', 'bigint', 'unknown_type']) {
+      expect(top(zodType, 'cell')).toBe('TextCell (fallback)');
+    }
+    expect(top('array', 'cell')).toBe('ArrayCell');
+    for (const zodType of ['object', 'set', 'bigint', 'array', 'unknown_type']) {
+      expect(top(zodType, 'form')).toBe('ReadOnlyInput (fallback)');
+    }
+    for (const zodType of ['object', 'set', 'array', 'unknown_type']) {
+      expect(registry.resolve(mockField({ zodType, filterable: 'exact' } as any), { mode: 'filter' })).toBeNull();
+    }
+    expect(top('bigint', 'filter')).toBe('TextFilter (fallback)');
+    expect(top('string', 'filter')).toBe('TextFilter (fallback)');
+    expect(top('string', 'form')).toBe('TextInput');
+  });
+
   it('explains renderer resolution', () => {
     const scores = registry.explain(mockField({ zodType: 'string' }), { mode: 'cell' });
     expect(scores.length).toBeGreaterThan(0);

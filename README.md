@@ -57,17 +57,18 @@ for (const col of columns) {
 
 | Renderer | Zod Type | Description |
 |----------|----------|-------------|
-| TextInput | string (+ fallback) | Text input with label |
+| TextInput | string | Text input with label |
 | NumberInput | number, int, float | Number input |
 | CheckboxInput | boolean | Checkbox with label |
 | SelectInput | enum | Dropdown with options |
 | DateInput | date | Date picker |
+| ReadOnlyInput | fallback (object, set, bigint, ...) | The value as text, read-only |
 
 ### Filter Renderers (filtering)
 
 | Renderer | Filter Type | Description |
 |----------|-------------|-------------|
-| TextFilter | search (+ fallback) | Text search input |
+| TextFilter | search (+ fallback for scalar types; object, set and array fields get no filter) | Text search input |
 | SelectFilter | select, multiSelect | Dropdown with "All" option |
 | RangeFilter | range | Min/Max number inputs |
 | BooleanFilter | boolean | All/Yes/No dropdown |
