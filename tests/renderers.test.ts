@@ -210,6 +210,23 @@ describe('Form Renderers', () => {
     expect(options.length).toBe(3);
   });
 
+  it('SelectInput writes the option raw value back, so numbers stay numbers (#14)', () => {
+    let received: unknown;
+    const el = selectInput({
+      field: { value: 2, onChange: (v: unknown) => { received = v; } },
+      config: mockFormConfig({
+        type: 'select',
+        zodType: 'literal',
+        options: [{ label: '2', value: '2', raw: 2 }, { label: '4', value: '4', raw: 4 }],
+      }),
+    });
+    const select = el.querySelector('select') as HTMLSelectElement;
+    expect(select.value).toBe('2');
+    select.value = '4';
+    select.dispatchEvent(new Event('change'));
+    expect(received).toBe(4);
+  });
+
   it('TextInput shows help text when provided', () => {
     const el = textInput({
       field: { value: '', onChange: () => {} },

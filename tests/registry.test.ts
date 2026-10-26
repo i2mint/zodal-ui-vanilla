@@ -79,6 +79,14 @@ describe('createVanillaRegistry', () => {
     expect(top('string', 'form')).toBe('TextInput');
   });
 
+  it('picks SelectInput for literal and union-of-literal choices, not for open unions (#14)', () => {
+    const top = (overrides: object) => registry.explain(mockField(overrides as any), { mode: 'form' })[0]?.name;
+    expect(top({ zodType: 'literal', filterable: 'select' })).toBe('SelectInput');
+    expect(top({ zodType: 'union', filterable: 'select' })).toBe('SelectInput');
+    expect(top({ zodType: 'union', filterable: false })).not.toBe('SelectInput');
+    expect(top({ zodType: 'enum', filterable: 'select' })).toBe('SelectInput');
+  });
+
   it('explains renderer resolution', () => {
     const scores = registry.explain(mockField({ zodType: 'string' }), { mode: 'cell' });
     expect(scores.length).toBeGreaterThan(0);
