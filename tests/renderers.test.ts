@@ -210,6 +210,35 @@ describe('Form Renderers', () => {
     expect(options.length).toBe(3);
   });
 
+  it('SelectInput writes the option raw value back, so numbers stay numbers (#14)', () => {
+    let received: unknown;
+    const el = selectInput({
+      field: { value: 2, onChange: (v: unknown) => { received = v; } },
+      config: mockFormConfig({
+        type: 'select',
+        zodType: 'literal',
+        options: [{ label: '2', value: '2', raw: 2 }, { label: '4', value: '4', raw: 4 }],
+      }),
+    });
+    const select = el.querySelector('select') as HTMLSelectElement;
+    expect(select.value).toBe('2');
+    select.value = '4';
+    select.dispatchEvent(new Event('change'));
+    expect(received).toBe(4);
+  });
+
+  it('SelectInput clears an optional field to undefined, not an empty string (#14)', () => {
+    let received: unknown = 'unset';
+    const el = selectInput({
+      field: { value: 2, onChange: (v: unknown) => { received = v; } },
+      config: mockFormConfig({ type: 'select', required: false, options: [{ label: '2', value: '2', raw: 2 }] }),
+    });
+    const select = el.querySelector('select') as HTMLSelectElement;
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+    expect(received).toBeUndefined();
+  });
+
   it('TextInput shows help text when provided', () => {
     const el = textInput({
       field: { value: '', onChange: () => {} },

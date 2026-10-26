@@ -62,7 +62,15 @@ function selectInput({ field, config }: FormFieldProps): HTMLElement {
     class: 'zodal-input',
     required: config.required,
     disabled: config.disabled,
-    onChange: (e: Event) => field.onChange((e.target as HTMLSelectElement).value),
+    onChange: (e: Event) => {
+      const value = (e.target as HTMLSelectElement).value;
+      // Write the option's `raw` back: a numeric choice must stay a number.
+      // `raw` is typed in @zodal/ui > 0.2.0 only (not yet on npm), hence the structural cast.
+      const option = ((config.options ?? []) as { value: string; raw?: unknown }[]).find((o) => o.value === value);
+      if (option) field.onChange(option.raw ?? option.value);
+      // The placeholder: clearing an optional field means no value, not ''.
+      else field.onChange(value === '' && !config.required ? undefined : value);
+    },
   },
     el('option', { value: '' }, `Select ${config.label}...`),
     ...(config.options ?? []).map(opt =>
@@ -150,7 +158,7 @@ export const formRenderers: RendererEntry<FormRenderer>[] = [
     name: 'CheckboxInput',
   },
   {
-    tester: (field, ctx) => ctx.mode === 'form' && field.zodType === 'enum' ? PRIORITY.DEFAULT : -1,
+    tester: (field, ctx) => ctx.mode === 'form' && (field.editWidget === 'select' || field.zodType === 'enum') ? PRIORITY.DEFAULT : -1,
     renderer: selectInput,
     name: 'SelectInput',
   },

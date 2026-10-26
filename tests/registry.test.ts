@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createVanillaRegistry } from '../src/index.js';
+import { createVanillaRegistry, formFieldAffordance } from '../src/index.js';
 import type { ResolvedFieldAffordance } from '@zodal/core';
 
 function mockField(overrides: Partial<ResolvedFieldAffordance> = {}): ResolvedFieldAffordance {
@@ -77,6 +77,15 @@ describe('createVanillaRegistry', () => {
     expect(top('bigint', 'filter')).toBe('TextFilter (fallback)');
     expect(top('string', 'filter')).toBe('TextFilter (fallback)');
     expect(top('string', 'form')).toBe('TextInput');
+  });
+
+  it('picks SelectInput from the form config widget, whatever the zodType (#14)', () => {
+    const top = (zodType: string, type: string, filterable: unknown) =>
+      registry.explain(formFieldAffordance(mockField({ zodType, filterable } as any), { type }), { mode: 'form' })[0]?.name;
+    // A literal whose filterable was overridden is still a select; an open union (json) never is.
+    expect(top('literal', 'select', 'exact')).toBe('SelectInput');
+    expect(top('union', 'select', 'select')).toBe('SelectInput');
+    expect(top('union', 'json', 'select')).not.toBe('SelectInput');
   });
 
   it('explains renderer resolution', () => {
