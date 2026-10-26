@@ -1,7 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { z } from 'zod';
-import { defineCollection } from '@zodal/core';
-import { toFormConfig } from '@zodal/ui';
 import { createVanillaRegistry, formFieldAffordance } from '../src/index.js';
 import type { ResolvedFieldAffordance } from '@zodal/core';
 
@@ -82,22 +79,13 @@ describe('createVanillaRegistry', () => {
     expect(top('string', 'form')).toBe('TextInput');
   });
 
-  it('picks SelectInput from the generated form config, for any closed choice (#14)', () => {
-    const c = defineCollection(z.object({
-      id: z.string(),
-      size: z.literal([2, 4]),
-      kind: z.union([z.literal('a'), z.literal('b')]),
-      locked: z.literal(['x', 'y']).meta({ filterable: 'exact' }),
-      status: z.union([z.string(), z.number()]),
-    }));
-    const configs = toFormConfig(c);
-    const top = (name: string) => {
-      const config = configs.find((f) => f.name === name)!;
-      return registry.explain(formFieldAffordance(c.fieldAffordances[name], config), { mode: 'form' })[0]?.name;
-    };
-    for (const name of ['size', 'kind', 'locked']) expect(top(name), name).toBe('SelectInput');
-    // An open union is a json field: it must not resolve to an empty select.
-    expect(top('status')).not.toBe('SelectInput');
+  it('picks SelectInput from the form config widget, whatever the zodType (#14)', () => {
+    const top = (zodType: string, type: string, filterable: unknown) =>
+      registry.explain(formFieldAffordance(mockField({ zodType, filterable } as any), { type }), { mode: 'form' })[0]?.name;
+    // A literal whose filterable was overridden is still a select; an open union (json) never is.
+    expect(top('literal', 'select', 'exact')).toBe('SelectInput');
+    expect(top('union', 'select', 'select')).toBe('SelectInput');
+    expect(top('union', 'json', 'select')).not.toBe('SelectInput');
   });
 
   it('explains renderer resolution', () => {

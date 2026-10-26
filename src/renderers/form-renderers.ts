@@ -65,7 +65,8 @@ function selectInput({ field, config }: FormFieldProps): HTMLElement {
     onChange: (e: Event) => {
       const value = (e.target as HTMLSelectElement).value;
       // Write the option's `raw` back: a numeric choice must stay a number.
-      const option = (config.options ?? []).find((o) => o.value === value);
+      // `raw` is typed in @zodal/ui > 0.2.0 only (not yet on npm), hence the structural cast.
+      const option = ((config.options ?? []) as { value: string; raw?: unknown }[]).find((o) => o.value === value);
       if (option) field.onChange(option.raw ?? option.value);
       // The placeholder: clearing an optional field means no value, not ''.
       else field.onChange(value === '' && !config.required ? undefined : value);
