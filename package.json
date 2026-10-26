@@ -34,7 +34,8 @@
     "jsdom": "^26.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "zod": "^4.3.6"
   },
   "license": "MIT",
   "repository": {

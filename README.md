@@ -98,6 +98,14 @@ const draw = () => {
 
 The `ViewConfig` type is declared here structurally (`src/view-types.ts`), and `groupItems` is a local copy, because the `@zodal/ui` on npm this package builds against predates `toViewConfig`; any object of that shape works.
 
+## Collection forms
+
+Resolve each `toFormConfig` field through `formFieldAffordance`, so a closed choice (an enum, a literal, a union of literals) reaches the select renderer, which writes the option's `raw` value back (numbers stay numbers):
+
+```ts
+const render = registry.resolve(formFieldAffordance(collection.fieldAffordances[config.name], config), { mode: 'form' });
+```
+
 ## Options forms (settings, provider options)
 
 `@zodal/ui`'s `toOptionsFormConfig(schema)` describes a settings-like object as form fields, with three widget types beyond a record form's: `'fieldset'` (a nested object, drawn as a `<fieldset>` of its fields), `'password'` (a secret: masked, never prefilled from a stored value) and `'code'` (a function, a client or a structured secret: a "Supplied in code" note, never an input). Resolve each field through `optionsFieldAffordance`:

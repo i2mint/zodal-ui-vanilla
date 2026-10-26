@@ -227,6 +227,18 @@ describe('Form Renderers', () => {
     expect(received).toBe(4);
   });
 
+  it('SelectInput clears an optional field to undefined, not an empty string (#14)', () => {
+    let received: unknown = 'unset';
+    const el = selectInput({
+      field: { value: 2, onChange: (v: unknown) => { received = v; } },
+      config: mockFormConfig({ type: 'select', required: false, options: [{ label: '2', value: '2', raw: 2 }] }),
+    });
+    const select = el.querySelector('select') as HTMLSelectElement;
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+    expect(received).toBeUndefined();
+  });
+
   it('TextInput shows help text when provided', () => {
     const el = textInput({
       field: { value: '', onChange: () => {} },

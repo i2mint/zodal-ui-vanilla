@@ -6,7 +6,6 @@
 import { PRIORITY } from '@zodal/ui';
 import type { RendererEntry } from '@zodal/ui';
 import { el } from '../dom.js';
-import type { ResolvedFieldAffordance } from '@zodal/core';
 import type { FormFieldProps } from '../types.js';
 
 function textInput({ field, config }: FormFieldProps): HTMLElement {
@@ -67,7 +66,9 @@ function selectInput({ field, config }: FormFieldProps): HTMLElement {
       const value = (e.target as HTMLSelectElement).value;
       // Write the option's `raw` back: a numeric choice must stay a number.
       const option = (config.options ?? []).find((o) => o.value === value);
-      field.onChange(option ? (option.raw ?? option.value) : value);
+      if (option) field.onChange(option.raw ?? option.value);
+      // The placeholder: clearing an optional field means no value, not ''.
+      else field.onChange(value === '' && !config.required ? undefined : value);
     },
   },
     el('option', { value: '' }, `Select ${config.label}...`),
@@ -132,16 +133,6 @@ function readOnlyInput({ field, config }: FormFieldProps): HTMLElement {
   );
 }
 
-/**
- * A closed single choice. The tester sees the affordance, not the form config:
- * a literal or union of literals gets enum defaults (`filterable: 'select'`),
- * an open union does not.
- */
-function isClosedChoice(field: ResolvedFieldAffordance): boolean {
-  if (field.editWidget === 'select' || field.zodType === 'enum') return true;
-  return (field.zodType === 'literal' || field.zodType === 'union') && field.filterable === 'select';
-}
-
 export type FormRenderer = (props: FormFieldProps) => HTMLElement;
 
 export const formRenderers: RendererEntry<FormRenderer>[] = [
@@ -166,7 +157,7 @@ export const formRenderers: RendererEntry<FormRenderer>[] = [
     name: 'CheckboxInput',
   },
   {
-    tester: (field, ctx) => ctx.mode === 'form' && isClosedChoice(field) ? PRIORITY.DEFAULT : -1,
+    tester: (field, ctx) => ctx.mode === 'form' && (field.editWidget === 'select' || field.zodType === 'enum') ? PRIORITY.DEFAULT : -1,
     renderer: selectInput,
     name: 'SelectInput',
   },
