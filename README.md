@@ -98,6 +98,21 @@ const draw = () => {
 
 The `ViewConfig` type is declared here structurally (`src/view-types.ts`), and `groupItems` is a local copy, because the `@zodal/ui` on npm this package builds against predates `toViewConfig`; any object of that shape works.
 
+## Feedback on every press (on by default)
+
+Every pressable these renderers draw (operation buttons, collection and selection operations, an item with `onOpen`) acknowledges a press on itself at once and shows that work is going on:
+
+- `data-pressed` on `pointerdown` (CSS `:active` alone does not fire on iOS Safari);
+- `data-pending`, `aria-busy="true"` and `aria-disabled="true"` while the callback's promise runs, with repeat presses ignored (the double-tap guard);
+- `data-indicator` (a small spinner) once the wait passes 400 ms, kept at least 500 ms so it never flickers;
+- `data-status="success" | "error"` when it settles. A zodal command result `{ ok: false }` counts as an error.
+
+To get the pending state, **return the work's promise** from `onOperation`, `onCollectionOperation` and `onOpen`. The view stays pending across rebuilds as long as you pass the same `ViewConfig` object (and a `shareScope` object per pane, if two panes draw the same config). Callbacks may return anything; a promise gets the pending state.
+
+The default look is `FEEDBACK_CSS`: zero-specificity rules, so any rule of yours wins. It includes a reduced-motion variant and `touch-action: manipulation`, and is added to the document once, on first use. To style the attributes entirely yourself, put an empty `<style data-zodal-feedback></style>` in the page.
+
+For your own elements, call `wirePress(element, action, { enterKey?, stopPropagation?, share? })`, or use `createActionFeedback` (the headless machine), `FEEDBACK_MS` (the 100 / 400 / 1000 / 10000 ms limits) and `feedbackFor(expectedMs)`. Why it is the default: i2mint/zodal `docs/adr/0001-feedback-principle.md`.
+
 ## Collection forms
 
 Resolve each `toFormConfig` field through `formFieldAffordance`, so a closed choice (an enum, a literal, a union of literals) reaches the select renderer, which writes the option's `raw` value back (numbers stay numbers):

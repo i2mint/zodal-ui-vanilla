@@ -15,3 +15,7 @@ export type { ItemViewProps, CollectionViewProps, ValueRenderer } from './render
 export { groupItems, groupId } from './group-items.js';
 export type { ItemGroup, GroupItemsOptions } from './group-items.js';
 export type { ViewConfig, ViewFieldConfig, ViewGroupConfig, ViewOperationConfig } from './view-types.js';
+export { wirePress, installFeedbackStyles, FEEDBACK_CSS } from './press.js';
+export type { PressOptions } from './press.js';
+export { FEEDBACK_MS, feedbackFor, createActionFeedback, isCommandFailure } from './action-feedback.js';
+export type { FeedbackLevel, ActionStatus, ActionFeedbackState, ActionFeedbackOptions, ActionFeedback, FeedbackClock } from './action-feedback.js';
