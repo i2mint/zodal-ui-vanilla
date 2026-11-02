@@ -8,12 +8,18 @@
  *   expands the group (when the config says the group is collapsible), and a toolbar with the
  *   collection operations (and the selection operations while something is selected).
  *
+ * Feedback (design decision 7): every pressable here (operation buttons, an item with `onOpen`,
+ * a group header) is wired with `wirePress`: pressed at once on `pointerdown`, pending while the
+ * callback's promise is in flight, repeat presses ignored. Return the promise from `onOperation`,
+ * `onCollectionOperation` and `onOpen` (an app opening, a command dispatching) to get that.
+ *
  * One-way data flow (design decision 5): each call builds fresh DOM. A click on a group header
  * toggles that group in place and reports it through `onToggleGroup`, so a consumer can persist
  * it (`ViewStateStore.toggleGroup`) and pass `collapsedGroups` on the next render.
  */
 
 import { el } from '../dom.js';
+import { wirePress } from '../press.js';
 import { groupItems } from '../group-items.js';
 import type { ViewConfig, ViewFieldConfig, ViewOperationConfig } from '../view-types.js';
 
@@ -32,12 +38,18 @@ export interface ItemViewProps {
   selected?: boolean;
   /** Called when the selection checkbox changes. Without it, no checkbox is drawn. */
   onSelect?: (id: string, selected: boolean, item: Item) => void;
-  /** Called when an operation button is clicked. Without it, no operation is drawn. */
-  onOperation?: (operation: ViewOperationConfig, item: Item) => void;
+  /**
+   * Called when an operation button is clicked. Without it, no operation is drawn. Return the
+   * work's promise (or command result): the button stays pending, and ignores presses, until it settles.
+   */
+  onOperation?: (operation: ViewOperationConfig, item: Item) => void | PromiseLike<unknown>;
   /** Override how a value is drawn (e.g. with a cell renderer from the registry). */
   renderValue?: ValueRenderer;
-  /** Called when the item itself (outside its buttons) is clicked or activated with Enter. */
-  onOpen?: (item: Item) => void;
+  /**
+   * Called when the item itself (outside its buttons) is clicked or activated with Enter. Return
+   * the promise of whatever opening takes (a fetch, a lazy route): the item shows it is opening.
+   */
+  onOpen?: (item: Item) => void | PromiseLike<unknown>;
 }
 
 /** What the collection view takes. */
@@ -52,8 +64,8 @@ export interface CollectionViewProps extends Omit<ItemViewProps, 'item' | 'selec
   onToggleGroup?: (groupId: string) => void;
   /** Ids of the selected items. */
   selectedIds?: readonly string[];
-  /** Called for a collection or selection operation (`items`: the selected items, or none). */
-  onCollectionOperation?: (operation: ViewOperationConfig, items: Item[]) => void;
+  /** Called for a collection or selection operation (`items`: the selected items, or none); return its promise, as for `onOperation`. */
+  onCollectionOperation?: (operation: ViewOperationConfig, items: Item[]) => void | PromiseLike<unknown>;
   /** Header of the group of items with no value. Default: `'None'`. */
   emptyLabel?: string;
   /** Shown when there are no items. Default: `'No items'`. */
@@ -126,23 +138,26 @@ function badgeNodes(item: Item, field: ViewFieldConfig): HTMLElement[] {
 // Pieces shared by a row and a card
 // ============================================================================
 
-function operationButtons(ops: ViewOperationConfig[], run: (op: ViewOperationConfig) => void): HTMLElement | null {
+/**
+ * The operation buttons. `share` keys each button's pending state to the view config, so a view
+ * rebuilt while an operation runs (the host re-renders on every state change) keeps it.
+ */
+function operationButtons(ops: ViewOperationConfig[], run: (op: ViewOperationConfig) => unknown, share: { scope: object; prefix: string }): HTMLElement | null {
   if (ops.length === 0) return null;
   return el('div', { class: 'zodal-view-actions' },
-    ...ops.map((op) =>
-      el('button', {
+    ...ops.map((op) => {
+      const button = el('button', {
         type: 'button',
         class: 'zodal-button',
         'data-operation': op.name,
         'data-variant': op.variant ?? 'default',
         'data-confirm': op.confirm ? 'true' : undefined,
         title: op.keyboardShortcut ? `${op.label} (${op.keyboardShortcut})` : undefined,
-        onClick: (e: Event) => {
-          e.stopPropagation();
-          run(op);
-        },
-      }, op.label),
-    ),
+        'aria-keyshortcuts': op.keyboardShortcut,
+      }, op.label);
+      wirePress(button, () => run(op), { stopPropagation: true, share: { scope: share.scope, key: `${share.prefix}${op.name}` } });
+      return button;
+    }),
   );
 }
 
@@ -195,10 +210,7 @@ function wire(root: HTMLElement, props: ItemViewProps): HTMLElement {
   if (selected) root.setAttribute('aria-selected', 'true');
   if (onOpen) {
     root.tabIndex = 0;
-    root.addEventListener('click', () => onOpen(item));
-    root.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Enter' && e.target === root) onOpen(item);
-    });
+    wirePress(root, () => onOpen(item), { enterKey: true, share: { scope: config, key: `open:${itemId(item, config)}` } });
   }
   return root;
 }
@@ -210,7 +222,7 @@ function wire(root: HTMLElement, props: ItemViewProps): HTMLElement {
 /** One item as a list row: checkbox, thumbnail, label, badges, secondary text, operations. */
 export function renderListItem(props: ItemViewProps): HTMLElement {
   const { item, config, onOperation } = props;
-  const ops = onOperation ? operationButtons(config.operations.item, (op) => onOperation(op, item)) : null;
+  const ops = onOperation ? operationButtons(config.operations.item, (op) => onOperation(op, item), { scope: config, prefix: `item:${itemId(item, config)}:` }) : null;
   return wire(
     el('li', { class: 'zodal-list-item' },
       selectBox(props),
@@ -225,7 +237,7 @@ export function renderListItem(props: ItemViewProps): HTMLElement {
 /** One item as a grid card: cover image, then label, badges, secondary text, operations. */
 export function renderGridCard(props: ItemViewProps): HTMLElement {
   const { item, config, onOperation } = props;
-  const ops = onOperation ? operationButtons(config.operations.item, (op) => onOperation(op, item)) : null;
+  const ops = onOperation ? operationButtons(config.operations.item, (op) => onOperation(op, item), { scope: config, prefix: `item:${itemId(item, config)}:` }) : null;
   return wire(
     el('article', { class: 'zodal-card' },
       imageNode(item, config, 'zodal-card-image'),
@@ -277,7 +289,7 @@ export function renderCollectionView(props: CollectionViewProps): HTMLElement {
   if (onCollectionOperation) {
     const selected = items.filter((i) => selectedIds.includes(itemId(i, config)));
     const ops = [...config.operations.collection, ...(selected.length ? config.operations.selection : [])];
-    const toolbar = operationButtons(ops, (op) => onCollectionOperation(op, config.operations.selection.includes(op) ? selected : []));
+    const toolbar = operationButtons(ops, (op) => onCollectionOperation(op, config.operations.selection.includes(op) ? selected : []), { scope: config, prefix: 'collection:' });
     if (toolbar) {
       toolbar.className = 'zodal-view-toolbar';
       root.appendChild(toolbar);
@@ -306,14 +318,16 @@ export function renderCollectionView(props: CollectionViewProps): HTMLElement {
           class: 'zodal-group-header',
           'aria-expanded': String(!g.collapsed),
           'aria-controls': contentId,
-          onClick: () => {
-            content.hidden = !content.hidden;
-            header.setAttribute('aria-expanded', String(!content.hidden));
-            section.setAttribute('data-collapsed', String(content.hidden));
-            onToggleGroup?.(g.id);
-          },
         }, ...title)
       : el('div', { class: 'zodal-group-header' }, ...title);
+    if (group.collapsible) {
+      wirePress(header, () => {
+        content.hidden = !content.hidden;
+        header.setAttribute('aria-expanded', String(!content.hidden));
+        section.setAttribute('data-collapsed', String(content.hidden));
+        onToggleGroup?.(g.id);
+      });
+    }
     const section = el('section', { class: 'zodal-group', 'data-group-id': g.id, 'data-group-kind': g.kind, 'data-collapsed': String(g.collapsed) }, header, content);
     root.appendChild(section);
   }
