@@ -29,26 +29,28 @@ export interface PressOptions<R = unknown> extends Pick<ActionFeedbackOptions<R>
    * Share the action's state with every element wired with the same `scope` (any stable object,
    * such as the view config) and `key`. A vanilla host rebuilds its DOM when state changes, so a
    * button rebuilt while its action is in flight would otherwise come back idle and pressable
-   * again; with `share`, the new element shows the pending state and the guard still holds.
+   * again; with `share`, the new element shows the pending state and the guard still holds. The
+   * tracker keeps the timing options of the first element wired for it.
    */
   share?: { scope: object; key: string };
 }
 
 /**
- * The default look of the feedback attributes, at zero specificity. Pressed: a quick scale-down;
- * pending: dimmed with a progress cursor; indicator: a small spinner after the content (a
- * renderer may draw its own instead). Reduced motion swaps the scale and the spin for opacity.
+ * The default look of the feedback attributes, at zero specificity (every selector is inside
+ * `:where`). Pressed: a quick scale-down; pending: dimmed with a progress cursor; indicator: a
+ * small spinner in its own child element (`.zodal-press-indicator`), so it never touches the
+ * host's `::before` / `::after`. Reduced motion swaps the scale and the spin for opacity.
  */
 export const FEEDBACK_CSS = `
 :where([data-zodal-press]) { touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform 80ms ease-out, opacity 80ms ease-out; }
 :where([data-zodal-press][data-pressed]) { transform: scale(0.97); opacity: 0.85; }
 :where([data-zodal-press][data-pending]) { opacity: 0.6; cursor: progress; }
-:where([data-zodal-press][data-indicator])::after { content: ""; display: inline-block; width: 0.8em; height: 0.8em; margin-inline-start: 0.4em; vertical-align: -0.1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: zodal-spin 0.8s linear infinite; }
+:where(.zodal-press-indicator) { display: inline-block; width: 0.8em; height: 0.8em; margin-inline-start: 0.4em; vertical-align: -0.1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: zodal-spin 0.8s linear infinite; }
 @keyframes zodal-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   :where([data-zodal-press]) { transition: opacity 80ms linear; }
   :where([data-zodal-press][data-pressed]) { transform: none; opacity: 0.7; }
-  :where([data-zodal-press][data-indicator])::after { animation: zodal-pulse 1.6s ease-in-out infinite; }
+  :where(.zodal-press-indicator) { animation: zodal-pulse 1.6s ease-in-out infinite; }
   @keyframes zodal-pulse { 50% { opacity: 0.3; } }
 }
 `;
@@ -85,6 +87,13 @@ function paint(element: HTMLElement, s: Readonly<ActionFeedbackState<unknown>>):
   const pending = s.status === 'pending';
   element.toggleAttribute('data-pending', pending);
   element.toggleAttribute('data-indicator', s.indicator);
+  const spinner = element.querySelector(':scope > .zodal-press-indicator');
+  if (s.indicator && !spinner) {
+    const span = element.ownerDocument.createElement('span');
+    span.className = 'zodal-press-indicator';
+    span.setAttribute('aria-hidden', 'true');
+    element.appendChild(span);
+  } else if (!s.indicator && spinner) spinner.remove();
   if (pending) {
     element.setAttribute('aria-busy', 'true');
     element.setAttribute('aria-disabled', 'true');
@@ -128,7 +137,10 @@ export function wirePress<R>(element: HTMLElement, action: () => R | PromiseLike
         ...(timing as Pick<ActionFeedbackOptions<unknown>, 'indicatorDelayMs' | 'minIndicatorMs' | 'isFailure' | 'clock'>),
         onChange: (s) => {
           paint(t.element, s);
-          if (s.status !== 'pending') {
+          // Shared from the moment it turns pending, before the action runs: a host that rebuilds
+          // the view synchronously inside its callback gets the pending tracker for the new element.
+          if (s.status === 'pending') shelf?.set(share!.key, t);
+          else {
             if (shelf?.get(share!.key) === t) shelf.delete(share!.key);
             t.onSettled?.(s);
           }
@@ -144,17 +156,17 @@ export function wirePress<R>(element: HTMLElement, action: () => R | PromiseLike
   }
   const { feedback } = tracker;
   const t = tracker;
-  const remember = () => {
-    if (shelf && t.feedback.state.status === 'pending') shelf.set(share!.key, t);
-  };
 
-  const press = () => {
-    void feedback.run();
-    remember();
+  const press = () => void feedback.run();
+  // `closest` duck-typed, not `instanceof Element`, which fails across realms (an iframe).
+  const owns = (e: Event) => {
+    const target = e.target as Element | null;
+    return typeof target?.closest === 'function' && target.closest(OWN_PRESS) === element;
   };
-  const owns = (e: Event) => e.target instanceof Element && e.target.closest(OWN_PRESS) === element;
   const down = (e: PointerEvent) => {
-    if (e.button === 0 && owns(e)) element.setAttribute('data-pressed', '');
+    if (e.button !== 0 || !owns(e)) return;
+    element.setAttribute('data-pressed', '');
+    element.removeAttribute('data-status'); // the last outcome is stale once a new press starts
   };
   const up = () => element.removeAttribute('data-pressed');
   const click = (e: Event) => {
@@ -182,6 +194,6 @@ export function wirePress<R>(element: HTMLElement, action: () => R | PromiseLike
     element.removeEventListener('click', click);
     element.removeEventListener('keydown', key);
     resets.delete(element);
-    if (t.element === element && !shelf?.has(share!.key)) feedback.dispose();
+    if (t.element === element && shelf?.get(share!.key) !== t) feedback.dispose();
   };
 }

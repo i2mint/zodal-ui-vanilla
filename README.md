@@ -107,7 +107,7 @@ Every pressable these renderers draw (operation buttons, collection and selectio
 - `data-indicator` (a small spinner) once the wait passes 400 ms, kept at least 500 ms so it never flickers;
 - `data-status="success" | "error"` when it settles. A zodal command result `{ ok: false }` counts as an error.
 
-To get the pending state, **return the work's promise** from `onOperation`, `onCollectionOperation` and `onOpen`. The view stays pending across rebuilds as long as you pass the same `ViewConfig` object.
+To get the pending state, **return the work's promise** from `onOperation`, `onCollectionOperation` and `onOpen`. The view stays pending across rebuilds as long as you pass the same `ViewConfig` object (and a `shareScope` object per pane, if two panes draw the same config). Callbacks may return anything; a promise gets the pending state.
 
 The default look is `FEEDBACK_CSS`: zero-specificity rules, so any rule of yours wins. It includes a reduced-motion variant and `touch-action: manipulation`, and is added to the document once, on first use. To style the attributes entirely yourself, put an empty `<style data-zodal-feedback></style>` in the page.
 

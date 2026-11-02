@@ -42,14 +42,19 @@ export interface ItemViewProps {
    * Called when an operation button is clicked. Without it, no operation is drawn. Return the
    * work's promise (or command result): the button stays pending, and ignores presses, until it settles.
    */
-  onOperation?: (operation: ViewOperationConfig, item: Item) => void | PromiseLike<unknown>;
+  onOperation?: (operation: ViewOperationConfig, item: Item) => unknown;
   /** Override how a value is drawn (e.g. with a cell renderer from the registry). */
   renderValue?: ValueRenderer;
+  /**
+   * What a pending press is kept against across rebuilds (with the item and operation). Default:
+   * the `config` object. Pass one object per pane when two panes draw the same config.
+   */
+  shareScope?: object;
   /**
    * Called when the item itself (outside its buttons) is clicked or activated with Enter. Return
    * the promise of whatever opening takes (a fetch, a lazy route): the item shows it is opening.
    */
-  onOpen?: (item: Item) => void | PromiseLike<unknown>;
+  onOpen?: (item: Item) => unknown;
 }
 
 /** What the collection view takes. */
@@ -65,7 +70,7 @@ export interface CollectionViewProps extends Omit<ItemViewProps, 'item' | 'selec
   /** Ids of the selected items. */
   selectedIds?: readonly string[];
   /** Called for a collection or selection operation (`items`: the selected items, or none); return its promise, as for `onOperation`. */
-  onCollectionOperation?: (operation: ViewOperationConfig, items: Item[]) => void | PromiseLike<unknown>;
+  onCollectionOperation?: (operation: ViewOperationConfig, items: Item[]) => unknown;
   /** Header of the group of items with no value. Default: `'None'`. */
   emptyLabel?: string;
   /** Shown when there are no items. Default: `'No items'`. */
@@ -153,7 +158,6 @@ function operationButtons(ops: ViewOperationConfig[], run: (op: ViewOperationCon
         'data-variant': op.variant ?? 'default',
         'data-confirm': op.confirm ? 'true' : undefined,
         title: op.keyboardShortcut ? `${op.label} (${op.keyboardShortcut})` : undefined,
-        'aria-keyshortcuts': op.keyboardShortcut,
       }, op.label);
       wirePress(button, () => run(op), { stopPropagation: true, share: { scope: share.scope, key: `${share.prefix}${op.name}` } });
       return button;
@@ -210,7 +214,7 @@ function wire(root: HTMLElement, props: ItemViewProps): HTMLElement {
   if (selected) root.setAttribute('aria-selected', 'true');
   if (onOpen) {
     root.tabIndex = 0;
-    wirePress(root, () => onOpen(item), { enterKey: true, share: { scope: config, key: `open:${itemId(item, config)}` } });
+    wirePress(root, () => onOpen(item), { enterKey: true, share: { scope: props.shareScope ?? config, key: `open:${itemId(item, config)}` } });
   }
   return root;
 }
@@ -222,7 +226,7 @@ function wire(root: HTMLElement, props: ItemViewProps): HTMLElement {
 /** One item as a list row: checkbox, thumbnail, label, badges, secondary text, operations. */
 export function renderListItem(props: ItemViewProps): HTMLElement {
   const { item, config, onOperation } = props;
-  const ops = onOperation ? operationButtons(config.operations.item, (op) => onOperation(op, item), { scope: config, prefix: `item:${itemId(item, config)}:` }) : null;
+  const ops = onOperation ? operationButtons(config.operations.item, (op) => onOperation(op, item), { scope: props.shareScope ?? config, prefix: `item:${itemId(item, config)}:` }) : null;
   return wire(
     el('li', { class: 'zodal-list-item' },
       selectBox(props),
@@ -237,7 +241,7 @@ export function renderListItem(props: ItemViewProps): HTMLElement {
 /** One item as a grid card: cover image, then label, badges, secondary text, operations. */
 export function renderGridCard(props: ItemViewProps): HTMLElement {
   const { item, config, onOperation } = props;
-  const ops = onOperation ? operationButtons(config.operations.item, (op) => onOperation(op, item), { scope: config, prefix: `item:${itemId(item, config)}:` }) : null;
+  const ops = onOperation ? operationButtons(config.operations.item, (op) => onOperation(op, item), { scope: props.shareScope ?? config, prefix: `item:${itemId(item, config)}:` }) : null;
   return wire(
     el('article', { class: 'zodal-card' },
       imageNode(item, config, 'zodal-card-image'),
@@ -278,6 +282,7 @@ export function renderCollectionView(props: CollectionViewProps): HTMLElement {
     onOperation: props.onOperation,
     renderValue: props.renderValue,
     onOpen: props.onOpen,
+    shareScope: props.shareScope,
   });
   const container = (children: HTMLElement[]) =>
     config.kind === 'grid'
@@ -289,7 +294,7 @@ export function renderCollectionView(props: CollectionViewProps): HTMLElement {
   if (onCollectionOperation) {
     const selected = items.filter((i) => selectedIds.includes(itemId(i, config)));
     const ops = [...config.operations.collection, ...(selected.length ? config.operations.selection : [])];
-    const toolbar = operationButtons(ops, (op) => onCollectionOperation(op, config.operations.selection.includes(op) ? selected : []), { scope: config, prefix: 'collection:' });
+    const toolbar = operationButtons(ops, (op) => onCollectionOperation(op, config.operations.selection.includes(op) ? selected : []), { scope: props.shareScope ?? config, prefix: 'collection:' });
     if (toolbar) {
       toolbar.className = 'zodal-view-toolbar';
       root.appendChild(toolbar);

@@ -154,6 +154,55 @@ describe('the feedback contract, for every pressable', () => {
     expect(onOperation).toHaveBeenCalledTimes(2);
   });
 
+  it('a host that rebuilds synchronously inside its callback keeps the new button pending and guarded', () => {
+    let current: HTMLElement;
+    const scope = {}; // its own pane, so no earlier test's pending press is shared
+    const draw = () => (current = renderCollectionView({ items: [item], config, onOperation, shareScope: scope }));
+    const onOperation = vi.fn(() => {
+      draw(); // e.g. state = setLoading(state, true); render(); then await the provider
+      return never();
+    });
+    draw();
+    (current!.querySelector('[data-operation="launch"]') as HTMLElement).click();
+    const rebuilt = current!.querySelector('[data-operation="launch"]') as HTMLElement;
+    expect(rebuilt.hasAttribute('data-pending')).toBe(true);
+    rebuilt.click();
+    expect(onOperation).toHaveBeenCalledTimes(1);
+  });
+
+  it('two panes drawing the same config keep their own pending state with shareScope', () => {
+    const onOperation = vi.fn(never);
+    const left = renderCollectionView({ items: [item], config, onOperation, shareScope: {} });
+    const right = renderCollectionView({ items: [item], config, onOperation, shareScope: {} });
+    (left.querySelector('[data-operation="launch"]') as HTMLElement).click();
+    expect(right.querySelector('[data-operation="launch"]')!.hasAttribute('data-pending')).toBe(false);
+    (right.querySelector('[data-operation="launch"]') as HTMLElement).click();
+    expect(onOperation).toHaveBeenCalledTimes(2);
+  });
+
+  it('the indicator is its own child element (never the host::after), removed when it settles', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const button = document.createElement('button');
+    wirePress(button, () => new Promise<void>((r) => (finish = r)));
+    button.click();
+    vi.advanceTimersByTime(FEEDBACK_MS.indicator);
+    expect(button.querySelectorAll(':scope > .zodal-press-indicator')).toHaveLength(1);
+    expect(FEEDBACK_CSS).not.toContain('::after');
+    finish();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(button.querySelector('.zodal-press-indicator')).toBeNull();
+  });
+
+  it('the last outcome is cleared when a new press starts', async () => {
+    const button = document.createElement('button');
+    wirePress(button, () => undefined);
+    button.click();
+    expect(button.getAttribute('data-status')).toBe('success');
+    button.dispatchEvent(pointer('pointerdown'));
+    expect(button.hasAttribute('data-status')).toBe(false);
+  });
+
   it('dispose removes the wiring', () => {
     const onPress = vi.fn();
     const button = document.createElement('button');
