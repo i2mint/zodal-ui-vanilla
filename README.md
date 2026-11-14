@@ -113,6 +113,18 @@ The default look is `FEEDBACK_CSS`: zero-specificity rules, so any rule of yours
 
 For your own elements, call `wirePress(element, action, { enterKey?, stopPropagation?, share? })`, or use `createActionFeedback` (the headless machine), `FEEDBACK_MS` (the 100 / 400 / 1000 / 10000 ms limits) and `feedbackFor(expectedMs)`. Why it is the default: i2mint/zodal `docs/adr/0001-feedback-principle.md`.
 
+## Copyable values (`copyable`)
+
+A field with `.meta({ copyable: true })` gets a copy button: beside the value in a table cell, and as a read-only field with the button in a form when it is not editable. For hand-drawn UIs:
+
+```ts
+import { copyButton, copyField } from '@zodal/ui-vanilla';
+row.append(copyButton(() => link.href, { name: 'Copy link' }));       // icon-only, beside a value on screen
+panel.append(copyField(apiUrl, { name: 'API URL', copyName: 'Copy API URL' }));
+```
+
+It copies inside the tap (the clipboard API, else `execCommand`; iOS refuses a write that waited), answers on itself (pressed at once, a check and "Copied", announced to screen readers, a short buzz where available), and when every copy path fails it selects the value so the device's own Copy finishes it, saying "Selected". 44px targets under `(pointer: coarse)`.
+
 ## Collection forms
 
 Resolve each `toFormConfig` field through `formFieldAffordance`, so a closed choice (an enum, a literal, a union of literals) reaches the select renderer, which writes the option's `raw` value back (numbers stay numbers):

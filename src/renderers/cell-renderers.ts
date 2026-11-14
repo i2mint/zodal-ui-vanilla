@@ -7,6 +7,7 @@ import { PRIORITY } from '@zodal/ui';
 import type { RendererEntry } from '@zodal/ui';
 import { el } from '../dom.js';
 import type { CellProps } from '../types.js';
+import { copyButton, installCopyStyles } from '../copy.js';
 
 /**
  * The option a value stands for in `ColumnConfig.meta.options` (i2mint/zodal#100), compared as
@@ -73,9 +74,27 @@ function arrayCell({ value, config }: CellProps): HTMLElement {
   return el('span', { class: 'zodal-cell zodal-cell-array' }, value.map((v) => cellLabel(config, v)).join(', '));
 }
 
+/** A `copyable` cell: the value, with an icon-only copy button beside it (zodal-ui-vanilla#21). */
+function copyableCell({ value, config }: CellProps): HTMLElement {
+  installCopyStyles();
+  const text = value == null ? '' : cellLabel(config, value);
+  const raw = value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  const header = (config as { header?: unknown }).header;
+  return el('span', { class: 'zodal-cell zodal-cell-copyable' },
+    el('span', null, text),
+    raw ? copyButton(raw, { name: `Copy ${typeof header === 'string' ? header.toLowerCase() : 'value'}` }) : null,
+  );
+}
+
 export type CellRenderer = (props: CellProps) => HTMLElement;
 
 export const cellRenderers: RendererEntry<CellRenderer>[] = [
+  // copyable (any type): above the type defaults, below an app's own renderers
+  {
+    tester: (field, ctx) => ctx.mode === 'cell' && (field as { copyable?: unknown }).copyable === true ? PRIORITY.LIBRARY : -1,
+    renderer: copyableCell,
+    name: 'CopyableCell',
+  },
   {
     tester: (_, ctx) => ctx.mode === 'cell' ? PRIORITY.FALLBACK : -1,
     renderer: textCell,

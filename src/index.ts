@@ -19,3 +19,7 @@ export { wirePress, installFeedbackStyles, FEEDBACK_CSS } from './press.js';
 export type { PressOptions } from './press.js';
 export { FEEDBACK_MS, feedbackFor, createActionFeedback, isCommandFailure } from './action-feedback.js';
 export type { FeedbackLevel, ActionStatus, ActionFeedbackState, ActionFeedbackOptions, ActionFeedback, FeedbackClock } from './action-feedback.js';
+
+// The copy control (the `copyable` affordance)
+export { copyButton, copyField, copyText, installCopyStyles, COPY_CSS, COPIED_MS } from './copy.js';
+export type { CopyButtonOptions, CopyFieldOptions, CopyOutcome } from './copy.js';
