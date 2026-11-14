@@ -7,6 +7,7 @@ import { PRIORITY } from '@zodal/ui';
 import type { RendererEntry } from '@zodal/ui';
 import { el } from '../dom.js';
 import type { FormFieldProps } from '../types.js';
+import { copyField, installCopyStyles } from '../copy.js';
 
 /**
  * `minlength` / `maxlength` from `FormFieldConfig.minLength` / `maxLength` (i2mint/zodal#84),
@@ -163,7 +164,24 @@ function readOnlyInput({ field, config }: FormFieldProps): HTMLElement {
 
 export type FormRenderer = (props: FormFieldProps) => HTMLElement;
 
+/** A read-only `copyable` form field: the value in full, selectable, with a copy button (#21). */
+function copyableReadOnly({ field, config }: FormFieldProps): HTMLElement {
+  installCopyStyles();
+  return el('div', { class: 'zodal-field' },
+    el('label', { class: 'zodal-label' }, config.label),
+    copyField(displayValue(field.value), { name: config.label, copyName: `Copy ${config.label.toLowerCase()}` }),
+    config.helpText ? el('p', { class: 'zodal-help' }, config.helpText) : null,
+  );
+}
+
 export const formRenderers: RendererEntry<FormRenderer>[] = [
+  // A copyable value that cannot be edited: shown in full with a copy button.
+  {
+    tester: (field, ctx) =>
+      ctx.mode === 'form' && (field as { copyable?: unknown }).copyable === true && field.editable === false ? PRIORITY.LIBRARY : -1,
+    renderer: copyableReadOnly,
+    name: 'CopyableField',
+  },
   {
     tester: (_, ctx) => ctx.mode === 'form' ? PRIORITY.FALLBACK : -1,
     renderer: readOnlyInput,
