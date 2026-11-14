@@ -20,6 +20,7 @@
 
 import { el } from '../dom.js';
 import { wirePress } from '../press.js';
+import { FEEDBACK_MS, operationKey, type OperationStatusSource } from '../action-feedback.js';
 import { groupItems } from '../group-items.js';
 import type { ViewConfig, ViewFieldConfig, ViewOperationConfig } from '../view-types.js';
 
@@ -55,6 +56,29 @@ export interface ItemViewProps {
    * the promise of whatever opening takes (a fetch, a lazy route): the item shows it is opening.
    */
   onOpen?: (item: Item) => unknown;
+  /**
+   * A shared status of operations (`createOperationStatus()`, zodal#112): an operation run from
+   * another surface (the palette, a hotkey) shows pending on its button here, and its button
+   * ignores presses meanwhile. Keys: `operationKey(op.name, itemId)` for item operations,
+   * `operationKey(op.name)` for collection and selection operations.
+   */
+  operationStatus?: OperationStatusSource;
+}
+
+/** Where a collection's load is (`CollectionState.loadStatus` in `@zodal/ui`, zodal#111). */
+export type ViewLoadStatus = 'idle' | 'first-load' | 'refreshing' | 'ready' | 'empty' | 'error';
+
+/** The hand-order (Reorder) mode of a collection view (zodal#127). */
+export interface ReorderOptions {
+  /** Draw the Up/Down buttons (an explicit mode, so rows stay readable outside it). */
+  active: boolean;
+  /** Move an item one place; the host reorders (`moveUp`/`moveDown` from `@zodal/core`) and re-renders. */
+  onMove: (id: string, direction: 'up' | 'down', item: Item) => unknown;
+  /**
+   * The item just moved, and how: its button for the same direction gets focus after the
+   * re-render (or the other one, at an end), and the move is announced to screen readers.
+   */
+  moved?: { id: string; direction: 'up' | 'down' };
 }
 
 /** What the collection view takes. */
@@ -75,6 +99,45 @@ export interface CollectionViewProps extends Omit<ItemViewProps, 'item' | 'selec
   emptyLabel?: string;
   /** Shown when there are no items. Default: `'No items'`. */
   emptyText?: string;
+  /**
+   * The load status (`CollectionState.loadStatus`, zodal#111): `first-load` draws skeleton rows in
+   * the final layout, `refreshing` keeps the items, dimmed and `aria-busy`.
+   */
+  loadStatus?: ViewLoadStatus;
+  /** How long the load has run; under `FEEDBACK_MS.indicator` nothing is shown (a fast load flashes nothing). */
+  loadElapsedMs?: number;
+  /** How many skeleton rows a first load draws. Default: 6. */
+  skeletonCount?: number;
+  /** Hand order: an explicit Reorder mode with Up/Down buttons (zodal#127). */
+  reorder?: ReorderOptions;
+}
+
+/** Styles for skeleton rows, a refreshing view, the Reorder buttons and screen-reader-only text. */
+export const VIEW_LOAD_CSS = `
+.zodal-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.zodal-skeleton { background: var(--zodal-skeleton, rgba(127,127,127,.18)); border-radius: 4px; height: 1em; margin: 4px 0; }
+.zodal-skeleton-label { width: 55%; }
+.zodal-skeleton-line { width: 80%; height: .8em; }
+@media (prefers-reduced-motion: no-preference) { .zodal-skeleton { animation: zodal-pulse 1.4s ease-in-out infinite; } }
+@keyframes zodal-pulse { 50% { opacity: .5; } }
+.zodal-view[data-load="stale"] { opacity: .6; transition: opacity .2s; }
+.zodal-reorder { display: flex; gap: 4px; margin-inline-start: auto; }
+.zodal-reorder-button { min-width: 44px; min-height: 44px; }
+.zodal-reorder-button:disabled { opacity: .35; }
+`;
+
+const styledDocs = new WeakSet<Document>();
+function installViewStyles(doc: Document): void {
+  if (styledDocs.has(doc)) return;
+  styledDocs.add(doc);
+  doc.head.appendChild(el('style', { 'data-zodal': 'view' }, VIEW_LOAD_CSS));
+}
+
+/** What a view shows for its load (the same rule as `getLoadFeedback` in `@zodal/ui`). */
+export function loadFeedbackOf(status: ViewLoadStatus | undefined, elapsedMs?: number): 'skeleton' | 'stale' | 'none' {
+  if (status !== 'first-load' && status !== 'refreshing') return 'none';
+  if (elapsedMs !== undefined && elapsedMs < FEEDBACK_MS.indicator) return 'none';
+  return status === 'first-load' ? 'skeleton' : 'stale';
 }
 
 const DASH = '—';
@@ -147,7 +210,12 @@ function badgeNodes(item: Item, field: ViewFieldConfig): HTMLElement[] {
  * The operation buttons. `share` keys each button's pending state to the view config, so a view
  * rebuilt while an operation runs (the host re-renders on every state change) keeps it.
  */
-function operationButtons(ops: ViewOperationConfig[], run: (op: ViewOperationConfig) => unknown, share: { scope: object; prefix: string }): HTMLElement | null {
+function operationButtons(
+  ops: ViewOperationConfig[],
+  run: (op: ViewOperationConfig) => unknown,
+  share: { scope: object; prefix: string },
+  status?: { source: OperationStatusSource; itemId?: string },
+): HTMLElement | null {
   if (ops.length === 0) return null;
   return el('div', { class: 'zodal-view-actions' },
     ...ops.map((op) => {
@@ -159,7 +227,11 @@ function operationButtons(ops: ViewOperationConfig[], run: (op: ViewOperationCon
         'data-confirm': op.confirm ? 'true' : undefined,
         title: op.keyboardShortcut ? `${op.label} (${op.keyboardShortcut})` : undefined,
       }, op.label);
-      wirePress(button, () => run(op), { stopPropagation: true, share: { scope: share.scope, key: `${share.prefix}${op.name}` } });
+      wirePress(button, () => run(op), {
+        stopPropagation: true,
+        share: { scope: share.scope, key: `${share.prefix}${op.name}` },
+        ...(status ? { status: { source: status.source, key: operationKey(op.name, status.itemId) } } : {}),
+      });
       return button;
     }),
   );
@@ -191,6 +263,15 @@ function imageNode(item: Item, config: ViewConfig, cls: string): HTMLElement | n
   const url = imageUrl(item[f.name]);
   if (!url) return el('div', { class: `${cls} zodal-placeholder`, 'aria-hidden': 'true' });
   return el('img', { class: cls, src: url, alt: labelText(item, config), loading: 'lazy' });
+}
+
+/** A placeholder item in the final layout (a first load): the label and secondary lines as bars. */
+function skeletonItem(config: ViewConfig): HTMLElement {
+  const bars = [el('div', { class: 'zodal-skeleton zodal-skeleton-label' })];
+  for (let i = 0; i < Math.min(config.fields.secondary.length, 2); i++) bars.push(el('div', { class: 'zodal-skeleton zodal-skeleton-line' }));
+  return config.kind === 'grid'
+    ? el('article', { class: 'zodal-card zodal-skeleton-item', 'aria-hidden': 'true' }, el('div', { class: 'zodal-card-body' }, ...bars))
+    : el('li', { class: 'zodal-list-item zodal-skeleton-item', 'aria-hidden': 'true' }, el('div', { class: 'zodal-list-body' }, ...bars));
 }
 
 function body(props: ItemViewProps): HTMLElement[] {
@@ -226,7 +307,14 @@ function wire(root: HTMLElement, props: ItemViewProps): HTMLElement {
 /** One item as a list row: checkbox, thumbnail, label, badges, secondary text, operations. */
 export function renderListItem(props: ItemViewProps): HTMLElement {
   const { item, config, onOperation } = props;
-  const ops = onOperation ? operationButtons(config.operations.item, (op) => onOperation(op, item), { scope: props.shareScope ?? config, prefix: `item:${itemId(item, config)}:` }) : null;
+  const ops = onOperation
+    ? operationButtons(
+        config.operations.item,
+        (op) => onOperation(op, item),
+        { scope: props.shareScope ?? config, prefix: `item:${itemId(item, config)}:` },
+        props.operationStatus ? { source: props.operationStatus, itemId: itemId(item, config) } : undefined,
+      )
+    : null;
   return wire(
     el('li', { class: 'zodal-list-item' },
       selectBox(props),
@@ -241,7 +329,14 @@ export function renderListItem(props: ItemViewProps): HTMLElement {
 /** One item as a grid card: cover image, then label, badges, secondary text, operations. */
 export function renderGridCard(props: ItemViewProps): HTMLElement {
   const { item, config, onOperation } = props;
-  const ops = onOperation ? operationButtons(config.operations.item, (op) => onOperation(op, item), { scope: props.shareScope ?? config, prefix: `item:${itemId(item, config)}:` }) : null;
+  const ops = onOperation
+    ? operationButtons(
+        config.operations.item,
+        (op) => onOperation(op, item),
+        { scope: props.shareScope ?? config, prefix: `item:${itemId(item, config)}:` },
+        props.operationStatus ? { source: props.operationStatus, itemId: itemId(item, config) } : undefined,
+      )
+    : null;
   return wire(
     el('article', { class: 'zodal-card' },
       imageNode(item, config, 'zodal-card-image'),
@@ -273,7 +368,7 @@ export function renderGridCard(props: ItemViewProps): HTMLElement {
  */
 export function renderCollectionView(props: CollectionViewProps): HTMLElement {
   const { items, config, collapsedGroups, expandedGroups, onToggleGroup, selectedIds = [], onCollectionOperation, emptyLabel, emptyText = 'No items' } = props;
-  const renderItem = config.kind === 'grid' ? renderGridCard : renderListItem;
+  let renderItem = config.kind === 'grid' ? renderGridCard : renderListItem;
   const itemProps = (item: Item): ItemViewProps => ({
     item,
     config,
@@ -283,6 +378,7 @@ export function renderCollectionView(props: CollectionViewProps): HTMLElement {
     renderValue: props.renderValue,
     onOpen: props.onOpen,
     shareScope: props.shareScope,
+    ...(props.operationStatus ? { operationStatus: props.operationStatus } : {}),
   });
   const container = (children: HTMLElement[]) =>
     config.kind === 'grid'
@@ -294,16 +390,82 @@ export function renderCollectionView(props: CollectionViewProps): HTMLElement {
   if (onCollectionOperation) {
     const selected = items.filter((i) => selectedIds.includes(itemId(i, config)));
     const ops = [...config.operations.collection, ...(selected.length ? config.operations.selection : [])];
-    const toolbar = operationButtons(ops, (op) => onCollectionOperation(op, config.operations.selection.includes(op) ? selected : []), { scope: props.shareScope ?? config, prefix: 'collection:' });
+    const toolbar = operationButtons(
+      ops,
+      (op) => onCollectionOperation(op, config.operations.selection.includes(op) ? selected : []),
+      { scope: props.shareScope ?? config, prefix: 'collection:' },
+      props.operationStatus ? { source: props.operationStatus } : undefined,
+    );
     if (toolbar) {
       toolbar.className = 'zodal-view-toolbar';
       root.appendChild(toolbar);
     }
   }
 
+  const feedback = loadFeedbackOf(props.loadStatus, props.loadElapsedMs);
+  if (feedback !== 'none' || props.reorder?.active) installViewStyles(root.ownerDocument);
+  if (feedback === 'skeleton' && items.length === 0) {
+    // Placeholders in the final layout, so nothing shifts when the items land.
+    root.setAttribute('aria-busy', 'true');
+    root.setAttribute('data-load', 'skeleton');
+    const rows = Array.from({ length: props.skeletonCount ?? 6 }, () => skeletonItem(config));
+    root.appendChild(container(rows));
+    return root;
+  }
+  if (feedback === 'stale') {
+    // A refresh keeps what is shown, marked busy: replacing it with a skeleton reads as data loss.
+    root.setAttribute('aria-busy', 'true');
+    root.setAttribute('data-load', 'stale');
+  }
+
   if (items.length === 0) {
     root.appendChild(el('p', { class: 'zodal-view-empty zodal-muted' }, emptyText));
     return root;
+  }
+
+  const reorder = props.reorder?.active ? props.reorder : undefined;
+  if (reorder) {
+    root.setAttribute('data-reorder', 'true');
+    const order = items.map((i) => itemId(i, config));
+    const announce = el('div', { class: 'zodal-sr-only', role: 'status', 'aria-live': 'polite' });
+    root.appendChild(announce);
+    const moved = reorder.moved;
+    if (moved) {
+      const at = order.indexOf(moved.id);
+      const item = items[at];
+      if (item) announce.textContent = `Moved ${labelText(item, config)} to position ${at + 1} of ${order.length}`;
+    }
+    const withButtons = renderItem;
+    const decorate = (node: HTMLElement, item: Item) => {
+      const id = itemId(item, config);
+      const at = order.indexOf(id);
+      const label = labelText(item, config);
+      const button = (direction: 'up' | 'down', disabled: boolean) => {
+        const b = el('button', {
+          type: 'button',
+          class: 'zodal-button zodal-reorder-button',
+          'data-move': direction,
+          'aria-label': `Move ${label} ${direction}`,
+          ...(disabled ? { disabled: true, 'aria-disabled': 'true' } : {}),
+        }, direction === 'up' ? '\u2191' : '\u2193');
+        if (!disabled) wirePress(b, () => reorder.onMove(id, direction, item), { stopPropagation: true });
+        return b;
+      };
+      const up = button('up', at <= 0);
+      const down = button('down', at >= order.length - 1);
+      node.appendChild(el('div', { class: 'zodal-reorder' }, up, down));
+      if (moved?.id === id) {
+        // Focus follows the moved item: the same direction, or the other at an end.
+        const target = (moved.direction === 'up' ? (up as HTMLButtonElement) : (down as HTMLButtonElement));
+        const other = target === up ? down : up;
+        const focusTarget = (target as HTMLButtonElement).disabled ? other : target;
+        queueMicrotask(() => {
+          if (focusTarget.isConnected) (focusTarget as HTMLButtonElement).focus();
+        });
+      }
+      return node;
+    };
+    renderItem = (p: ItemViewProps) => decorate(withButtons(p), p.item);
   }
 
   const group = config.group;

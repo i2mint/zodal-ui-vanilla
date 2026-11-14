@@ -15,7 +15,7 @@
  * is already there (put an empty one in to opt out and style the attributes yourself).
  */
 
-import { createActionFeedback, type ActionFeedback, type ActionFeedbackOptions, type ActionFeedbackState } from './action-feedback.js';
+import { createActionFeedback, type ActionFeedback, type ActionFeedbackOptions, type ActionFeedbackState, type OperationStatusSource } from './action-feedback.js';
 
 /** What {@link wirePress} takes beyond the element and the action. */
 export interface PressOptions<R = unknown> extends Pick<ActionFeedbackOptions<R>, 'indicatorDelayMs' | 'minIndicatorMs' | 'isFailure' | 'clock'> {
@@ -33,6 +33,12 @@ export interface PressOptions<R = unknown> extends Pick<ActionFeedbackOptions<R>
    * tracker keeps the timing options of the first element wired for it.
    */
   share?: { scope: object; key: string };
+  /**
+   * The operation's state in a shared {@link OperationStatusSource} (zodal#112): a run from
+   * another surface (the command palette, a hotkey, an AI tool) shows pending here, and a press
+   * while it is pending is ignored. Key it with `operationKey(operation, itemId)`.
+   */
+  status?: { source: OperationStatusSource; key: string };
 }
 
 /**
@@ -121,7 +127,7 @@ const OWN_PRESS = '[data-zodal-press], button, a[href], input, select, textarea,
  * ```
  */
 export function wirePress<R>(element: HTMLElement, action: () => R | PromiseLike<R>, options: PressOptions<R> = {}): () => void {
-  const { enterKey = false, stopPropagation = false, onSettled, share, ...timing } = options;
+  const { enterKey = false, stopPropagation = false, onSettled, share, status, ...timing } = options;
   const doc = element.ownerDocument;
   installFeedbackStyles(doc);
   element.setAttribute('data-zodal-press', '');
@@ -135,6 +141,7 @@ export function wirePress<R>(element: HTMLElement, action: () => R | PromiseLike
       onSettled: onSettled as Tracker['onSettled'],
       feedback: createActionFeedback(() => t.action(), {
         ...(timing as Pick<ActionFeedbackOptions<unknown>, 'indicatorDelayMs' | 'minIndicatorMs' | 'isFailure' | 'clock'>),
+        ...(status ? { shared: status } : {}),
         onChange: (s) => {
           paint(t.element, s);
           // Shared from the moment it turns pending, before the action runs: a host that rebuilds
@@ -148,6 +155,8 @@ export function wirePress<R>(element: HTMLElement, action: () => R | PromiseLike
       }),
     };
     tracker = t;
+    // A fresh element for an operation already pending elsewhere starts out showing it.
+    if (status && t.feedback.state.status !== 'idle') paint(element, t.feedback.state);
   } else {
     tracker.element = element;
     tracker.action = action;

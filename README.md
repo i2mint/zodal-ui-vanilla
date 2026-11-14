@@ -128,6 +128,20 @@ panel.append(copyField(apiUrl, { name: 'API URL', copyName: 'Copy API URL' }));
 
 It copies inside the tap (the clipboard API, else `execCommand`; iOS refuses a write that waited), answers on itself (pressed at once, a check and "Copied", announced to screen readers, a short buzz where available), and when every copy path fails it selects the value so the device's own Copy finishes it, saying "Selected". 44px targets under `(pointer: coarse)`.
 
+### Loading, shared operation status, and hand order
+
+```ts
+renderCollectionView({
+  items, config,
+  loadStatus: state.loadStatus,           // @zodal/ui CollectionState: first-load → skeleton rows; refreshing → items kept, dimmed, aria-busy
+  loadElapsedMs: Date.now() - startedAt,  // under 400 ms nothing is shown, so a fast load does not flash
+  operationStatus: status,                // createOperationStatus(): a run from the palette shows pending on its button, and the button waits
+  reorder: { active: reordering, onMove: (id, dir) => setItems(dir === 'up' ? moveUp(items, id) : moveDown(items, id)), moved },
+});
+```
+
+Reorder is an explicit mode: 44 px Up/Down buttons on each row, disabled (never hidden) at the ends; after the host re-renders with `moved: { id, direction }`, focus follows the moved item and the move is announced ("Moved A to position 2 of 3"). The order operations are `moveUp`/`moveDown`/`removeItem`… in `@zodal/core`.
+
 ## Collection forms
 
 Resolve each `toFormConfig` field through `formFieldAffordance`, so a closed choice (an enum, a literal, a union of literals) reaches the select renderer, which writes the option's `raw` value back (numbers stay numbers):
