@@ -8,6 +8,30 @@ import type { RendererEntry } from '@zodal/ui';
 import { el } from '../dom.js';
 import type { FormFieldProps } from '../types.js';
 
+/**
+ * `minlength` / `maxlength` from `FormFieldConfig.minLength` / `maxLength` (i2mint/zodal#84),
+ * read structurally: the `@zodal/ui` on npm predates them.
+ */
+function lengthAttrs(config: object): { minlength?: number; maxlength?: number } {
+  const c = config as { minLength?: unknown; maxLength?: unknown };
+  const out: { minlength?: number; maxlength?: number } = {};
+  if (typeof c.minLength === 'number' && Number.isFinite(c.minLength)) out.minlength = c.minLength;
+  if (typeof c.maxLength === 'number' && Number.isFinite(c.maxLength)) out.maxlength = c.maxLength;
+  return out;
+}
+
+/** `YYYY-MM-DD` (UTC) for a Date, epoch ms or ISO string; '' when unset or invalid. */
+export function toDateInputValue(v: unknown): string {
+  if (v == null || v === '') return '';
+  const d = v instanceof Date ? v : new Date(v as number | string);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+}
+
+/** A date input's value as a Date at UTC midnight, or `undefined` when cleared. */
+export function fromDateInputValue(s: string): Date | undefined {
+  return s ? new Date(`${s}T00:00:00.000Z`) : undefined;
+}
+
 function textInput({ field, config }: FormFieldProps): HTMLElement {
   return el('div', { class: 'zodal-field' },
     el('label', { for: config.name, class: 'zodal-label' }, config.label),
@@ -19,6 +43,7 @@ function textInput({ field, config }: FormFieldProps): HTMLElement {
       placeholder: config.placeholder,
       required: config.required,
       disabled: config.disabled,
+      ...lengthAttrs(config),
       onInput: (e: Event) => field.onChange((e.target as HTMLInputElement).value),
     }),
     config.helpText ? el('p', { class: 'zodal-help' }, config.helpText) : null,
@@ -87,9 +112,9 @@ function selectInput({ field, config }: FormFieldProps): HTMLElement {
 }
 
 function dateInput({ field, config }: FormFieldProps): HTMLElement {
-  const dateValue = field.value instanceof Date
-    ? (field.value as Date).toISOString().split('T')[0]
-    : String(field.value ?? '');
+  const dateValue = toDateInputValue(field.value);
+  // Date bounds arrive in epoch ms (i2mint/zodal#108); dates are read and written in UTC.
+  const bounds = (config as { bounds?: { min?: unknown; max?: unknown } }).bounds;
 
   return el('div', { class: 'zodal-field' },
     el('label', { for: config.name, class: 'zodal-label' }, config.label),
@@ -100,7 +125,9 @@ function dateInput({ field, config }: FormFieldProps): HTMLElement {
       class: 'zodal-input',
       required: config.required,
       disabled: config.disabled,
-      onInput: (e: Event) => field.onChange(new Date((e.target as HTMLInputElement).value)),
+      min: toDateInputValue(bounds?.min) || undefined,
+      max: toDateInputValue(bounds?.max) || undefined,
+      onInput: (e: Event) => field.onChange(fromDateInputValue((e.target as HTMLInputElement).value)),
     }),
   );
 }

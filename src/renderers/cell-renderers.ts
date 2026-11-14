@@ -8,7 +8,29 @@ import type { RendererEntry } from '@zodal/ui';
 import { el } from '../dom.js';
 import type { CellProps } from '../types.js';
 
+/**
+ * The option a value stands for in `ColumnConfig.meta.options` (i2mint/zodal#100), compared as
+ * strings like `labelOf` in `@zodal/ui`; read structurally since the `@zodal/ui` on npm predates it.
+ */
+function optionOf(config: CellProps['config'], value: unknown): { label: string; hint?: string } | undefined {
+  const options = (config.meta as { options?: unknown }).options;
+  if (!Array.isArray(options)) return undefined;
+  const key = String(value);
+  const hit = options.find((o) => o && typeof o === 'object' && String((o as { value?: unknown }).value) === key) as
+    | { label?: unknown; hint?: unknown }
+    | undefined;
+  if (!hit || typeof hit.label !== 'string' || hit.label === '') return undefined;
+  return typeof hit.hint === 'string' ? { label: hit.label, hint: hit.hint } : { label: hit.label };
+}
+
+/** The text a cell shows for a value: its option label, else the value. */
+export function cellLabel(config: CellProps['config'], value: unknown): string {
+  return optionOf(config, value)?.label ?? String(value ?? '');
+}
+
 function textCell({ value, config }: CellProps): HTMLElement {
+  const option = value == null ? undefined : optionOf(config, value);
+  if (option) return el('span', { class: 'zodal-cell zodal-cell-text', title: option.hint }, option.label);
   const str = String(value ?? '');
   const truncate = config.meta.truncate;
   if (truncate && str.length > truncate) {
@@ -21,8 +43,8 @@ function numberCell({ value, config }: CellProps): HTMLElement {
   if (value == null) return el('span', { class: 'zodal-cell zodal-muted' }, '\u2014');
   const formatted = config.meta.displayFormat === 'currency'
     ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value as number)
-    : String(value);
-  return el('span', { class: 'zodal-cell zodal-cell-number' }, formatted);
+    : cellLabel(config, value);
+  return el('span', { class: 'zodal-cell zodal-cell-number', title: optionOf(config, value)?.hint }, formatted);
 }
 
 function booleanCell({ value }: CellProps): HTMLElement {
@@ -38,15 +60,17 @@ function dateCell({ value }: CellProps): HTMLElement {
 function badgeCell({ value, config }: CellProps): HTMLElement {
   const str = String(value ?? '');
   const variant = config.meta.badge?.[str] ?? 'default';
+  const option = value == null ? undefined : optionOf(config, value);
   return el('span', {
     class: 'zodal-cell zodal-badge',
     'data-variant': variant,
-  }, str);
+    title: option?.hint,
+  }, option?.label ?? str);
 }
 
-function arrayCell({ value }: CellProps): HTMLElement {
+function arrayCell({ value, config }: CellProps): HTMLElement {
   if (!Array.isArray(value)) return el('span', { class: 'zodal-cell zodal-muted' }, '\u2014');
-  return el('span', { class: 'zodal-cell zodal-cell-array' }, value.join(', '));
+  return el('span', { class: 'zodal-cell zodal-cell-array' }, value.map((v) => cellLabel(config, v)).join(', '));
 }
 
 export type CellRenderer = (props: CellProps) => HTMLElement;

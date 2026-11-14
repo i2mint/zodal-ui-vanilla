@@ -6,6 +6,7 @@
 import { PRIORITY } from '@zodal/ui';
 import type { RendererEntry } from '@zodal/ui';
 import { el } from '../dom.js';
+import { fromDateInputValue, toDateInputValue } from './form-renderers.js';
 import type { FilterFieldProps } from '../types.js';
 
 function textFilter({ field, config }: FilterFieldProps): HTMLElement {
@@ -34,6 +35,7 @@ function selectFilter({ field, config }: FilterFieldProps): HTMLElement {
 
 function rangeFilter({ field, config }: FilterFieldProps): HTMLElement {
   const [min, max] = Array.isArray(field.value) ? field.value : [undefined, undefined];
+  if (config.zodType === 'date') return dateRangeFilter({ field, config });
   return el('div', { style: { display: 'flex', gap: '4px' }, class: 'zodal-filter zodal-filter-range' },
     el('input', {
       type: 'number',
@@ -60,6 +62,26 @@ function rangeFilter({ field, config }: FilterFieldProps): HTMLElement {
       },
     }),
   );
+}
+
+/** A date range: two date inputs, written back as Dates (UTC midnight), never numbers (i2mint/zodal#105). */
+function dateRangeFilter({ field, config }: FilterFieldProps): HTMLElement {
+  const value: [unknown, unknown] = Array.isArray(field.value) ? [field.value[0], field.value[1]] : [undefined, undefined];
+  const b = config.bounds as { min?: unknown; max?: unknown } | undefined;
+  const input = (i: 0 | 1, label: string) =>
+    el('input', {
+      type: 'date',
+      'aria-label': `${config.label} ${label}`,
+      value: toDateInputValue(value[i]),
+      min: toDateInputValue(b?.min) || undefined,
+      max: toDateInputValue(b?.max) || undefined,
+      class: 'zodal-input',
+      onInput: (e: Event) => {
+        value[i] = fromDateInputValue((e.target as HTMLInputElement).value);
+        field.onChange([value[0], value[1]]);
+      },
+    });
+  return el('div', { style: { display: 'flex', gap: '4px' }, class: 'zodal-filter zodal-filter-range' }, input(0, 'from'), input(1, 'to'));
 }
 
 function booleanFilter({ field, config }: FilterFieldProps): HTMLElement {
