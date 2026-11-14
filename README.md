@@ -281,8 +281,8 @@ All elements use `.zodal-*` CSS class names. Style them however you want:
 <script type="importmap">
 { "imports": {
   "zod": "https://esm.sh/zod@4",
-  "@zodal/core": "https://esm.sh/@zodal/core@0.2.2",
-  "@zodal/ui": "https://esm.sh/@zodal/ui@0.2.2",
+  "@zodal/core": "https://esm.sh/@zodal/core@0.2.6",
+  "@zodal/ui": "https://esm.sh/@zodal/ui@0.2.6",
   "@zodal/ui-vanilla": "https://esm.sh/@zodal/ui-vanilla@0.3.0"
 }}
 </script>
