@@ -10,14 +10,15 @@ export { optionsFieldAffordance } from './options-form-types.js';
 export type { OptionsFormField } from './options-form-types.js';
 export { contentCellRenderers, contentFormRenderers } from './renderers/content-renderers.js';
 export type { CellProps, FormFieldProps, FilterFieldProps } from './types.js';
-export { renderCollectionView, renderListItem, renderGridCard, itemId } from './renderers/view-renderers.js';
-export type { ItemViewProps, CollectionViewProps, ValueRenderer } from './renderers/view-renderers.js';
+export { renderCollectionView, renderListItem, renderGridCard, itemId, loadFeedbackOf, VIEW_LOAD_CSS } from './renderers/view-renderers.js';
+export type { ItemViewProps, CollectionViewProps, ValueRenderer, ViewLoadStatus, ReorderOptions } from './renderers/view-renderers.js';
 export { groupItems, groupId } from './group-items.js';
 export type { ItemGroup, GroupItemsOptions } from './group-items.js';
 export type { ViewConfig, ViewFieldConfig, ViewGroupConfig, ViewOperationConfig } from './view-types.js';
 export { wirePress, installFeedbackStyles, FEEDBACK_CSS } from './press.js';
 export type { PressOptions } from './press.js';
-export { FEEDBACK_MS, feedbackFor, createActionFeedback, isCommandFailure } from './action-feedback.js';
+export { FEEDBACK_MS, feedbackFor, createActionFeedback, isCommandFailure, createOperationStatus, operationKey } from './action-feedback.js';
+export type { OperationStatusSource } from './action-feedback.js';
 export type { FeedbackLevel, ActionStatus, ActionFeedbackState, ActionFeedbackOptions, ActionFeedback, FeedbackClock } from './action-feedback.js';
 
 // The copy control (the `copyable` affordance)
