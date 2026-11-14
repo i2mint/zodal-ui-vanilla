@@ -11,11 +11,30 @@ import { copyField, installCopyStyles } from '../copy.js';
 import { attachFieldHistory, type FieldHistoryHandle } from '../field-history.js';
 import { fieldHistoryOf } from '../history-types.js';
 
+/** Words that mark a field name as a secret (a local, cautious stand-in for `@zodal/core`'s `isSecretName`, which npm 0.2.0 lacks). */
+const SECRET_WORD = /^(password|passwd|pwd|passphrase|secret|secrets|credential|credentials|otp|pin|cvv|cvc|ssn|token|tokens|apikey|privatekey|accesskey|clientsecret)$/;
+
+/** The words of a field name: `apiKey`, `api_key`, `API-KEY` all read as `api key`. */
+function nameWords(name: string): string[] {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+/**
+ * Never remember a secret: a field marked `secret`, a password input, or a secret-looking name
+ * (any secret word, or one ending in `key`), mirroring `@zodal/ui`'s `remembers()`.
+ */
+export function isSecretField(config: { name?: string; type?: string; secret?: unknown }): boolean {
+  if ((config as { secret?: unknown }).secret || config.type === 'password') return true;
+  const words = nameWords(config.name ?? '');
+  const joined = words.join('');
+  return words.some((w) => SECRET_WORD.test(w)) || SECRET_WORD.test(joined) || words[words.length - 1] === 'key';
+}
+
 /** The history control for a text field, when the context has a store and the config asks for history. */
 function historyFor(props: FormFieldProps, field: HTMLInputElement | HTMLTextAreaElement): FieldHistoryHandle | null {
   const { config, context } = props;
   const history = fieldHistoryOf(config);
-  if (!context?.history || !history || config.disabled) return null;
+  if (!context?.history || !history || config.disabled || isSecretField(config)) return null;
   return attachFieldHistory({
     history: context.history,
     config: history,

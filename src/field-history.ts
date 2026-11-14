@@ -287,7 +287,7 @@ export interface FieldHistoryHandle {
   readonly isOpen: boolean;
   open(): void;
   close(): void;
-  /** Remove the listeners and stop following the store (also done on its own once `element` leaves the document). */
+  /** Remove the listeners and stop following the store (done on its own once `element` has been in the document and left it; see also {@link destroyFieldHistory}). */
   destroy(): void;
 }
 
@@ -317,6 +317,45 @@ function place(popover: HTMLElement, anchor: HTMLElement | null | undefined): vo
 }
 
 let listSeq = 0;
+
+/** Each attached history's teardown, by its element (for {@link destroyFieldHistory}). */
+const teardowns = new WeakMap<Element, () => void>();
+/** Per document: the checks of the histories alive in it, run on every DOM change. */
+const watchers = new WeakMap<Document, { observer: MutationObserver | null; checks: Set<() => void> }>();
+
+/** Run `check` on every change to `doc`'s tree (one shared observer per document); returns the unwatch. */
+function watchDocument(doc: Document, check: () => void): () => void {
+  let w = watchers.get(doc);
+  if (!w) {
+    const checks = new Set<() => void>();
+    const observer = typeof MutationObserver === 'function'
+      ? new MutationObserver(() => [...checks].forEach((c) => c()))
+      : null;
+    observer?.observe(doc, { childList: true, subtree: true });
+    w = { observer, checks };
+    watchers.set(doc, w);
+  }
+  w.checks.add(check);
+  const mine = w;
+  return () => {
+    mine.checks.delete(check);
+    if (mine.checks.size === 0) {
+      mine.observer?.disconnect();
+      watchers.delete(doc);
+    }
+  };
+}
+
+/**
+ * Tear down every field history attached inside `root` (and `root` itself): listeners, timers,
+ * the store subscription. A host that rebuilds its form calls this on the old form; without it,
+ * each history stops on its own once its element has left the document.
+ */
+export function destroyFieldHistory(root: ParentNode | Element): void {
+  const found = Array.from(root.querySelectorAll('[data-role="field-history"]'));
+  if (root instanceof Element && root.matches('[data-role="field-history"]')) found.unshift(root);
+  for (const e of found) teardowns.get(e)?.();
+}
 
 /**
  * Attach the history button and list to a text field. Returns `null` when there is no store or
@@ -431,9 +470,17 @@ export function attachFieldHistory(options: FieldHistoryOptions): FieldHistoryHa
     });
     if (!ok) return; // the field keeps its value: nothing typed is lost
     field.value = entry.value;
-    onChange?.(entry.value);
     close('pick');
-    focusField();
+    focusField(); // before onChange: a host that re-renders on change replaces this field
+    onChange?.(entry.value);
+    // If it did, the focus goes to the new field (found by id), with the caret at the end.
+    if (!field.isConnected && field.id) {
+      const again = doc.getElementById(field.id) as HTMLInputElement | HTMLTextAreaElement | null;
+      if (again && typeof again.focus === 'function') {
+        again.focus();
+        try { again.setSelectionRange(again.value.length, again.value.length); } catch { /* not a text control */ }
+      }
+    }
   };
   const remove = (entry: HistoryEntry) => void attempt('remove it', () => state.remove(entry));
   const pin = (entry: HistoryEntry, pinned: boolean) => void attempt(pinned ? 'pin it' : 'unpin it', () => state.pin(entry, pinned));
@@ -585,7 +632,11 @@ export function attachFieldHistory(options: FieldHistoryOptions): FieldHistoryHa
 
     if (lost) {
       const sel = `[data-role="${lost.role}"]`;
-      const again = lost.entry ? list.querySelector<HTMLElement>(`[data-entry="${lost.entry}"] ${sel}`) : list.querySelector<HTMLElement>(sel);
+      // The entry is matched by comparing attributes, not in a selector: an id is any string.
+      const scope = lost.entry
+        ? Array.from(list.querySelectorAll<HTMLElement>('[data-entry]')).find((r) => r.getAttribute('data-entry') === lost.entry)
+        : list;
+      const again = scope?.querySelector<HTMLElement>(sel) ?? null;
       (again ?? filter ?? grid).focus();
     }
   };
@@ -621,6 +672,9 @@ export function attachFieldHistory(options: FieldHistoryOptions): FieldHistoryHa
     if ((e as Event & { newState?: string }).newState === 'closed' && isOpen) close('dismiss');
   };
 
+  // Without native popover support, a press outside the list (and the button) closes it.
+  let outside: ((e: Event) => void) | null = null;
+
   function open() {
     if (isOpen || destroyed) return;
     isOpen = true;
@@ -645,7 +699,13 @@ export function attachFieldHistory(options: FieldHistoryOptions): FieldHistoryHa
     list.addEventListener('toggle', onToggle);
     element.append(list);
     if (typeof list.showPopover === 'function') {
-      try { list.showPopover(); } catch { /* already open, or not supported */ }
+      try { list.showPopover(); } catch { /* already open */ }
+    } else {
+      outside = (e: Event) => {
+        const t = e.target as Node | null;
+        if (t && !element.contains(t)) close('dismiss');
+      };
+      doc.addEventListener('pointerdown', outside, true);
     }
     render();
     place(list, button);
@@ -660,6 +720,7 @@ export function attachFieldHistory(options: FieldHistoryOptions): FieldHistoryHa
     const closing = list;
     list = grid = filter = null;
     closing.removeEventListener('toggle', onToggle);
+    if (outside) { doc.removeEventListener('pointerdown', outside, true); outside = null; }
     if (typeof closing.hidePopover === 'function') {
       try { closing.hidePopover(); } catch { /* already closed */ }
     }
@@ -687,12 +748,22 @@ export function attachFieldHistory(options: FieldHistoryOptions): FieldHistoryHa
     (field as HTMLElement).removeEventListener('keydown', onFieldKey);
     coarseQuery?.removeEventListener?.('change', onCoarse);
     state.destroy();
+    unwatch();
+    teardowns.delete(element);
   };
 
-  state.onChange(() => {
-    // A vanilla host replaces its DOM on re-render: once this has left the document, stop.
+  /** A vanilla host replaces its DOM on re-render: once this has been in the document and left it, stop. */
+  const checkConnected = (): boolean => {
+    if (destroyed) return false;
     if (element.isConnected) wasConnected = true;
-    else if (wasConnected) return destroy();
+    else if (wasConnected) { destroy(); return false; }
+    return true;
+  };
+  const unwatch = watchDocument(doc, checkConnected);
+  teardowns.set(element, destroy);
+
+  state.onChange(() => {
+    if (!checkConnected()) return;
     syncButton();
     if (isOpen) render();
   });

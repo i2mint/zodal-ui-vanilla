@@ -25,6 +25,7 @@ export { copyButton, copyField, copyText, installCopyStyles, COPY_CSS, COPIED_MS
 export type { CopyButtonOptions, CopyFieldOptions, CopyOutcome } from './copy.js';
 export {
   attachFieldHistory,
+  destroyFieldHistory,
   createFieldHistoryState,
   historyIcon,
   historyLine,

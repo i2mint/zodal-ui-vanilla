@@ -9,11 +9,13 @@ import {
   createVanillaRegistry,
   createFieldHistoryState,
   attachFieldHistory,
+  destroyFieldHistory,
   historyLine,
   relativeTime,
   HISTORY_FILTER_THRESHOLD,
   HISTORY_TOUCH_TARGET_PX,
 } from '../src/index.js';
+import { isSecretField } from '../src/renderers/form-renderers.js';
 import type { FieldHistoryStore, HistoryEntry, HistoryReason, VanillaRenderer } from '../src/index.js';
 
 let container: HTMLElement | undefined;
@@ -429,5 +431,129 @@ describe('text and textarea renderers with history', () => {
     expect(f.written).toEqual([]);
     expect(f.field().value).toBe('typed');
     expect(f.list()!.querySelector('[role="alert"]')!.textContent).toContain('quota exceeded');
+  });
+});
+
+describe('after review', () => {
+  const plainText = { zodType: 'string', editable: true, visible: true } as unknown as ResolvedFieldAffordance;
+  const draw = (store: FieldHistoryStore, config: Record<string, unknown>, onChange: (v: unknown) => void = () => {}) => {
+    const render = createVanillaRegistry().resolve(plainText, { mode: 'form' }) as VanillaRenderer;
+    return render({ field: { value: '', onChange }, config: { label: 'L', type: 'text', history: { max: 50, scope: 's' }, ...config }, context: { mode: 'form', history: store } });
+  };
+
+  it('never offers history on a secret: a secret flag, a password input, or a secret-looking name', async () => {
+    const { store } = fakeStore([['s', 'hunter2']]);
+    for (const config of [{ name: 'a', secret: true }, { name: 'b', type: 'password' }, { name: 'apiKey' }, { name: 'db_password' }, { name: 'access_token' }]) {
+      const c = mount(draw(store, config));
+      await settle();
+      expect(c.querySelector('[data-role="field-history"]'), JSON.stringify(config)).toBeNull();
+      container?.remove();
+    }
+    const c = mount(draw(store, { name: 'lyrics' }));
+    await settle();
+    expect(c.querySelector('[data-role="field-history"]')).not.toBeNull();
+    expect(isSecretField({ name: 'monkeyBusiness' })).toBe(false);
+    expect(isSecretField({ name: 'sortKey' })).toBe(true); // cautious: a missed history costs less than a leaked key
+  });
+
+  it('a history drawn before it is mounted stops once it has been mounted and removed, with no store change', async () => {
+    const { store } = fakeStore([['s', 'a']]);
+    const unsubscribed = vi.fn();
+    const subscribe = store.subscribe!.bind(store);
+    store.subscribe = (l) => { const off = subscribe(l); return () => { unsubscribed(); off(); }; };
+    const node = draw(store, { name: 'lyrics' });
+    await settle(); // the list arrives while it is not in the document: nothing is torn down
+    expect(unsubscribed).not.toHaveBeenCalled();
+    mount(node);
+    await settle();
+    container!.remove();
+    await settle();
+    expect(unsubscribed).toHaveBeenCalledTimes(1);
+  });
+
+  it('destroyFieldHistory(root) tears down the histories inside a form', async () => {
+    const { store } = fakeStore([['s', 'a']]);
+    const unsubscribed = vi.fn();
+    const subscribe = store.subscribe!.bind(store);
+    store.subscribe = (l) => { const off = subscribe(l); return () => { unsubscribed(); off(); }; };
+    const form = document.createElement('form');
+    form.append(draw(store, { name: 'one' }), draw(store, { name: 'two' }));
+    destroyFieldHistory(form);
+    expect(unsubscribed).toHaveBeenCalledTimes(2);
+    const input = form.querySelector('input')!;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, bubbles: true }));
+    expect(form.querySelector('[data-role="history-list"]')).toBeNull();
+  });
+
+  it('after a pick, a host that re-renders on change gets the focus in its new field', async () => {
+    const { store } = fakeStore([['s', 'picked']]);
+    const host = document.createElement('div');
+    const renderForm = (value: string) => {
+      destroyFieldHistory(host);
+      const render = createVanillaRegistry().resolve(plainText, { mode: 'form' }) as VanillaRenderer;
+      host.replaceChildren(render({
+        field: { value, onChange: (v: unknown) => renderForm(String(v)) },
+        config: { name: 'lyrics', label: 'L', type: 'text', history: { max: 50, scope: 's' } },
+        context: { mode: 'form', history: store },
+      }));
+    };
+    renderForm('');
+    mount(host);
+    await settle();
+    (host.querySelector('[data-role="history-button"]') as HTMLElement).click();
+    await settle();
+    (host.querySelector('[data-role="history-pick"]') as HTMLElement).click();
+    await settle();
+    const field = host.querySelector('input') as HTMLInputElement;
+    expect(field.value).toBe('picked');
+    expect(document.activeElement).toBe(field);
+  });
+
+  it('an entry id with quotes in it does not break the list', async () => {
+    const { store, all } = fakeStore([['s', 'a']]);
+    all()[0].id = 'x"] , [y';
+    const c = mount(draw(store, { name: 'lyrics' }));
+    await settle();
+    (c.querySelector('[data-role="history-button"]') as HTMLElement).click();
+    await settle();
+    const pinButton = c.querySelector('[data-role="history-pin"]') as HTMLElement;
+    pinButton.focus();
+    pinButton.click();
+    await settle();
+    expect(c.querySelector('[data-role="history-row"]')!.hasAttribute('data-pinned')).toBe(true);
+    expect((document.activeElement as HTMLElement).getAttribute('data-role')).toBe('history-pin');
+  });
+
+  it('without popover support, a press outside closes the list; a press inside does not', async () => {
+    const c = mount(draw(fakeStore([['s', 'a']]).store, { name: 'lyrics' }));
+    await settle();
+    (c.querySelector('[data-role="history-button"]') as HTMLElement).click();
+    await settle();
+    c.querySelector('[data-role="history-row"]')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(c.querySelector('[data-role="history-list"]')).not.toBeNull();
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(c.querySelector('[data-role="history-list"]')).toBeNull();
+  });
+
+  it('with popover support, the list is shown as a popover and a light dismiss (toggle) closes it', async () => {
+    const show = vi.fn();
+    const hide = vi.fn(); // called on an already-closed popover: harmless
+    (HTMLElement.prototype as any).showPopover = show;
+    (HTMLElement.prototype as any).hidePopover = hide;
+    try {
+      const c = mount(draw(fakeStore([['s', 'a']]).store, { name: 'lyrics' }));
+      await settle();
+      (c.querySelector('[data-role="history-button"]') as HTMLElement).click();
+      await settle();
+      expect(show).toHaveBeenCalledTimes(1);
+      const list = c.querySelector('[data-role="history-list"]')!;
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      expect(c.querySelector('[data-role="history-list"]')).not.toBeNull(); // the browser does the light dismiss
+      list.dispatchEvent(Object.assign(new Event('toggle'), { newState: 'closed' }));
+      expect(c.querySelector('[data-role="history-list"]')).toBeNull();
+    } finally {
+      delete (HTMLElement.prototype as any).showPopover;
+      delete (HTMLElement.prototype as any).hidePopover;
+    }
   });
 });

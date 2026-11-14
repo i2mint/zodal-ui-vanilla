@@ -59,6 +59,8 @@ for (const col of columns) {
 |----------|----------|-------------|
 | TextInput | string | Text input with label; a history button when the field has history |
 | TextareaInput | string + `editWidget: 'textarea'` | Multi-line text (`description`, `notes`... or declared); a history button when the field has history |
+
+**Changed in this version:** every free-text string field whose `editWidget` is `'textarea'` (which `@zodal/core` infers for names such as `description`, `notes`, `body`, or that you declare) now renders as a `<textarea>` (`TextareaInput`), with or without history. It used to render as a single-line `TextInput`. This matches zodal-ui-shadcn. To keep the old behaviour for a field, give it another `editWidget`, or register your own renderer above `PRIORITY.LIBRARY`.
 | NumberInput | number, int, float | Number input |
 | CheckboxInput | boolean | Checkbox with label |
 | SelectInput | enum | Dropdown with options |
@@ -155,7 +157,9 @@ form.append(render({ field: { value, onChange }, config, context: ctx }));
 - Picking an entry records the current value first (so a pick never loses typing), writes the picked value into the field and calls `field.onChange`, closes the list and returns focus to the field. Alt+ArrowDown on the field opens the list.
 - Controls are at least 44 px under a coarse pointer (`minTarget` to change it); on a narrow screen the list is a bottom sheet.
 - "Clear history" clears at once; Undo stays offered for 10 seconds, even if the list is closed and reopened. A store failure (a pick, a pin, a clear) is shown in the list, and a refused pick leaves the field as it was.
-- The list re-reads on the store's optional `subscribe`, so a `recordUse` on submit shows up at once. Once the button leaves the document (a vanilla host re-rendering its form), it stops following the store on the next change; `destroy()` stops it at once.
+- The list re-reads on the store's optional `subscribe`, so a `recordUse` on submit shows up at once. Once the button has been in the document and leaves it (a vanilla host re-rendering its form), it stops following the store and removes its listeners. A host that rebuilds its form can do that at once with `destroyFieldHistory(oldForm)`.
+- A secret never gets history: a field with `secret`, a `password` input, or a secret-looking name (`apiKey`, `db_password`, `access_token`...) draws no button, whatever its config says.
+- After a pick, focus goes to the field before `field.onChange` runs; if the host re-renders on change, focus moves to the new field with the same `id`.
 
 The default look is `HISTORY_CSS` (zero-specificity `.zodal-history-*` rules, added once; an empty `<style data-zodal-history></style>` opts out).
 
