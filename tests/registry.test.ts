@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { createVanillaRegistry, formFieldAffordance } from '../src/index.js';
+import { createRendererRegistry } from '@zodal/ui';
+import { createVanillaRegistry, formFieldAffordance, tagInput, chipFilter, chipCell } from '../src/index.js';
+import type { VanillaRenderer } from '../src/index.js';
 import type { ResolvedFieldAffordance } from '@zodal/core';
 
 function mockField(overrides: Partial<ResolvedFieldAffordance> = {}): ResolvedFieldAffordance {
@@ -68,9 +70,10 @@ describe('createVanillaRegistry', () => {
       expect(top(zodType, 'cell')).toBe('TextCell (fallback)');
     }
     expect(top('array', 'cell')).toBe('ArrayCell');
-    for (const zodType of ['object', 'set', 'bigint', 'array', 'unknown_type']) {
+    for (const zodType of ['object', 'set', 'bigint', 'unknown_type']) {
       expect(top(zodType, 'form')).toBe('ReadOnlyInput (fallback)');
     }
+    expect(top('array', 'form')).toBe('TagInput');
     for (const zodType of ['object', 'set', 'array', 'unknown_type']) {
       expect(registry.resolve(mockField({ zodType, filterable: 'exact' } as any), { mode: 'filter' })).toBeNull();
     }
@@ -100,5 +103,78 @@ describe('createVanillaRegistry', () => {
     const scores = registry.explain(field, { mode: 'cell' });
     const topScorer = scores[0];
     expect(topScorer.name).toContain('Currency');
+  });
+});
+
+describe('tag renderers in the registry', () => {
+  const registry = createVanillaRegistry();
+  const TAG_ENTRIES = new Set(['TagInput', 'ChipFilter']);
+  // The registry as it was before the tag renderers (ArrayCell keeps its name and tester).
+  const legacy = createRendererRegistry<VanillaRenderer>();
+  for (const entry of registry.entries) if (!TAG_ENTRIES.has(entry.name!)) legacy.register(entry);
+
+  // Every field type zodal infers, with the `filterable` its type defaults give.
+  const FIELD_TYPES: Array<[string, unknown]> = [
+    ['string', 'search'], ['number', 'range'], ['int', 'range'], ['float', 'range'], ['bigint', 'range'],
+    ['boolean', 'boolean'], ['enum', 'select'], ['date', 'range'], ['object', false], ['record', false],
+    ['set', 'contains'], ['tuple', 'contains'], ['unknown', false],
+  ];
+  const MODES = ['cell', 'form', 'filter'] as const;
+  /** The winning renderer's name, or null when nothing matches (`resolve` returns null). */
+  const winner = (f: ResolvedFieldAffordance, mode: (typeof MODES)[number]) => {
+    const top = registry.explain(f, { mode })[0];
+    return top && top.score >= 0 ? top.name : null;
+  };
+
+  it('changes no winner for any non-array field', () => {
+    for (const [zodType, filterable] of FIELD_TYPES) {
+      for (const mode of MODES) {
+        const field = mockField({ zodType, filterable } as any);
+        expect(registry.resolve(field, { mode }), `${zodType} / ${mode}`).toBe(legacy.resolve(field, { mode }));
+      }
+    }
+  });
+
+  it('resolves the expected renderers for every field type', () => {
+    const table = Object.fromEntries(FIELD_TYPES.map(([zodType, filterable]) => {
+      const field = mockField({ zodType, filterable } as any);
+      return [zodType, MODES.map((mode) => winner(field, mode))];
+    }));
+    // Each fallback stays in its own mode (#2): no form/filter renderer → ReadOnlyInput / none.
+    expect(table).toEqual({
+      string: ['TextCell', 'TextInput', 'TextFilter'],
+      number: ['NumberCell', 'NumberInput', 'RangeFilter'],
+      int: ['NumberCell', 'NumberInput', 'RangeFilter'],
+      float: ['NumberCell', 'NumberInput', 'RangeFilter'],
+      bigint: ['TextCell (fallback)', 'ReadOnlyInput (fallback)', 'RangeFilter'],
+      boolean: ['BooleanCell', 'CheckboxInput', 'BooleanFilter'],
+      enum: ['BadgeCell', 'SelectInput', 'SelectFilter'],
+      date: ['DateCell', 'DateInput', 'RangeFilter'],
+      object: ['TextCell (fallback)', 'ReadOnlyInput (fallback)', null],
+      record: ['TextCell (fallback)', 'ReadOnlyInput (fallback)', null],
+      set: ['TextCell (fallback)', 'ReadOnlyInput (fallback)', null],
+      tuple: ['TextCell (fallback)', 'ReadOnlyInput (fallback)', null],
+      unknown: ['TextCell (fallback)', 'ReadOnlyInput (fallback)', null],
+    });
+  });
+
+  it('resolves the chip renderers for an array field', () => {
+    const field = mockField({ zodType: 'array', filterable: 'contains' } as any);
+    expect(MODES.map((mode) => winner(field, mode))).toEqual(['ArrayCell', 'TagInput', 'ChipFilter']);
+    expect(registry.resolve(field, { mode: 'form' })).toBe(tagInput);
+    expect(registry.resolve(field, { mode: 'filter' })).toBe(chipFilter);
+    expect(registry.resolve(field, { mode: 'cell' })).toBe(chipCell);
+  });
+
+  it('keys the chip filter on contains over an array, not on a string', () => {
+    const substring = mockField({ zodType: 'string', filterable: 'contains' } as any);
+    expect(winner(substring, 'filter')).not.toBe('ChipFilter');
+    expect(registry.resolve(substring, { mode: 'filter' })).toBe(legacy.resolve(substring, { mode: 'filter' }));
+    expect(winner(mockField({ zodType: 'array', filterable: 'multiSelect' } as any), 'filter')).toBe('MultiSelectFilter');
+  });
+
+  it('respects editWidget: another widget declared on an array, or tags asked for on any field', () => {
+    expect(winner(mockField({ zodType: 'array', editWidget: 'json' } as any), 'form')).not.toBe('TagInput');
+    expect(winner(mockField({ zodType: 'string', editWidget: 'tags' } as any), 'form')).toBe('TagInput');
   });
 });

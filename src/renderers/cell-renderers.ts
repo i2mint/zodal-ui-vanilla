@@ -8,26 +8,10 @@ import type { RendererEntry } from '@zodal/ui';
 import { el } from '../dom.js';
 import type { CellProps } from '../types.js';
 import { copyButton, installCopyStyles } from '../copy.js';
+import { optionOf, cellLabel } from '../option-label.js';
+import { chipCell } from './tag-renderers.js';
 
-/**
- * The option a value stands for in `ColumnConfig.meta.options` (i2mint/zodal#100), compared as
- * strings like `labelOf` in `@zodal/ui`; read structurally since the `@zodal/ui` on npm predates it.
- */
-function optionOf(config: CellProps['config'], value: unknown): { label: string; hint?: string } | undefined {
-  const options = (config.meta as { options?: unknown }).options;
-  if (!Array.isArray(options)) return undefined;
-  const key = String(value);
-  const hit = options.find((o) => o && typeof o === 'object' && String((o as { value?: unknown }).value) === key) as
-    | { label?: unknown; hint?: unknown }
-    | undefined;
-  if (!hit || typeof hit.label !== 'string' || hit.label === '') return undefined;
-  return typeof hit.hint === 'string' ? { label: hit.label, hint: hit.hint } : { label: hit.label };
-}
-
-/** The text a cell shows for a value: its option label, else the value. */
-export function cellLabel(config: CellProps['config'], value: unknown): string {
-  return optionOf(config, value)?.label ?? String(value ?? '');
-}
+export { cellLabel };
 
 function textCell({ value, config }: CellProps): HTMLElement {
   const option = value == null ? undefined : optionOf(config, value);
@@ -67,11 +51,6 @@ function badgeCell({ value, config }: CellProps): HTMLElement {
     'data-variant': variant,
     title: option?.hint,
   }, option?.label ?? str);
-}
-
-function arrayCell({ value, config }: CellProps): HTMLElement {
-  if (!Array.isArray(value)) return el('span', { class: 'zodal-cell zodal-muted' }, '\u2014');
-  return el('span', { class: 'zodal-cell zodal-cell-array' }, value.map((v) => cellLabel(config, v)).join(', '));
 }
 
 /** A `copyable` cell: the value, with an icon-only copy button beside it (zodal-ui-vanilla#21). */
@@ -127,7 +106,8 @@ export const cellRenderers: RendererEntry<CellRenderer>[] = [
   },
   {
     tester: (field, ctx) => ctx.mode === 'cell' && field.zodType === 'array' ? PRIORITY.DEFAULT : -1,
-    renderer: arrayCell,
+    // Chips with "+N" overflow (see tag-renderers.ts); the name is kept for lookups.
+    renderer: chipCell,
     name: 'ArrayCell',
   },
   {

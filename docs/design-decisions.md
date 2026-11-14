@@ -36,6 +36,8 @@ zodal's core packages (`@zodal/core`, `@zodal/store`, `@zodal/ui`) are headless 
 
 ## Decision 6: Peer ranges go to the next MAJOR, not the next minor
 
+> **Superseded** by zodal's [`docs/versioning.md`](https://github.com/i2mint/zodal/blob/main/docs/versioning.md). Peers are now a caret on the lowest version needed (`^0.2.1`). The failure this decision guarded against, a core minor orphaning this package, is now caught on the core side: zodal's release CI runs `scripts/check-satellite-peers.mjs` and refuses a core release that a published satellite's peer range would newly reject, so satellites are widened (`^0.2.1 || ^0.3.0`) before the breaking minor ships. A range to the next major would accept a breaking `0.3.0` and move the break from install time to runtime in an app. The original text is kept below for history.
+
 **Choice**: `peerDependencies` on `@zodal/core` and `@zodal/ui` are `>=X.Y.0 <1.0.0`, not `^X.Y.0`.
 
 **Rationale**: npm's caret is *exact-minor* below 1.0 — `^0.1.0` resolves to `>=0.1.0 <0.2.0`. So while the core packages are pre-1.0, a caret peer turns every core **minor** release into a hard `ERESOLVE` install failure for this package, even when nothing it uses has changed. That is exactly what happened when core/ui went to 0.2.0: this renderer typechecked, built, and passed its whole suite against 0.2.0, yet `npm install` refused it — the only non-React renderer in the ecosystem was uninstallable for a version range, not an incompatibility.
@@ -47,3 +49,21 @@ A range to the next major says what is actually meant: "works across the 0.x lin
 **Choice**: `wirePress` gives every pressable these renderers draw a pressed state (`data-pressed`, from `pointerdown`). While the callback's promise runs it adds a pending state (`data-pending`, `aria-busy`, `aria-disabled`, repeat presses ignored), then a delayed indicator (`data-indicator`). It styles them with `FEEDBACK_CSS`, injected once at zero specificity unless the page brings its own `<style data-zodal-feedback>`. Pending state is keyed to the `ViewConfig` plus the item and operation (`share`), not to the element.
 
 **Rationale**: the feedback principle (i2mint/zodal `docs/adr/0001-feedback-principle.md`) only holds if it is the default. An attribute nobody styles is invisible, so this is the one exception to Decision 4. The `:where()` selectors keep its specificity at zero, so any rule of the page's wins. The pending state cannot live only on the element because of Decision 5: the host rebuilds the view on every state change, and a button rebuilt mid-flight would come back idle and pressable again.
+
+## Decision 8: Tag widgets keep their own state inside the element
+
+**Choice**: The tag input and the type-ahead chip filter update their own chips, draft and suggestion list in place, and report every change through `field.onChange` with the whole new value (an array for the form, a `FilterCondition` or `undefined` for the filter).
+
+**Rationale**: A chip input's interaction (type, pick, add, remove, keep focus, keep the half-typed draft) cannot survive the swap-the-element cycle of Decision 5: re-rendering on each add would drop focus and the draft. So these widgets are the one place where the element outlives a change. The consumer still owns the value; it need not re-render on `onChange`, and if it does, the new element starts from the value it passes in.
+
+## Decision 9: `field` stays the value binding; the affordance travels as `affordance`
+
+**Choice**: Form and filter props are `@zodal/ui`'s `FieldRenderProps` (`config`, optional `context`) with `field` kept as the `{ value, onChange }` binding this package has always used, and the resolved affordance as an optional `affordance` (`BoundFieldProps<C>` in `src/types.ts`).
+
+**Rationale**: `FieldRenderProps.field` is the affordance, which collides with this package's `field` binding. Renaming the binding would break every existing caller; keeping it and adding `context` (which carries `suggest`) and `affordance` as optional props keeps old call sites working and gets the context to the widgets.
+
+## Decision 10: The chip filter emits `arrayContainsAny`, even for one value
+
+**Choice**: `toContainsFilter(name, values)` returns `{ field, operator: 'arrayContainsAny', value: [...] }`, or `undefined` when nothing is selected.
+
+**Rationale**: OR within one field is the faceted-filter convention (AND across fields is the consumer's `{ and: [...] }`), and the filter says so in words ("Tags is any of"). For a single value it equals `arrayContains`, so one operator loses nothing and keeps the value's shape stable: it never flips between a scalar and an array as chips are added or removed, which keeps app state, URLs and backend translation simple. Every adapter that supports `contains` filters translates `arrayContainsAny` (in-memory `filterToFunction`, Supabase `ov`/`&&`, HTTP).

@@ -1,3 +1,11 @@
+/**
+ * @zodal/ui-vanilla: zodal renderers as plain DOM element factories.
+ *
+ * `createVanillaRegistry()` holds every renderer; the arrays (`cellRenderers`,
+ * `formRenderers`, `filterRenderers`, content renderers) are exported for
+ * selective use, and the tag widgets' factories for custom settings.
+ */
+
 export { createVanillaRegistry } from './registry.js';
 export type { VanillaRenderer } from './registry.js';
 export { cellRenderers } from './renderers/cell-renderers.js';
@@ -9,7 +17,6 @@ export { formFieldAffordance } from './form-field-affordance.js';
 export { optionsFieldAffordance } from './options-form-types.js';
 export type { OptionsFormField } from './options-form-types.js';
 export { contentCellRenderers, contentFormRenderers } from './renderers/content-renderers.js';
-export type { CellProps, FormFieldProps, FilterFieldProps } from './types.js';
 export { renderCollectionView, renderListItem, renderGridCard, itemId, loadFeedbackOf, VIEW_LOAD_CSS } from './renderers/view-renderers.js';
 export type { ItemViewProps, CollectionViewProps, ValueRenderer, ViewLoadStatus, ReorderOptions } from './renderers/view-renderers.js';
 export { groupItems, groupId } from './group-items.js';
@@ -40,4 +47,35 @@ export {
 export type { FieldHistoryOptions, FieldHistoryHandle, FieldHistoryState } from './field-history.js';
 export { fieldHistoryOf, DEFAULT_HISTORY_MAX } from './history-types.js';
 export type { FieldHistoryStore, HistoryEntry, HistoryReason, ResolvedFieldHistory } from './history-types.js';
-export type { FieldRenderContext } from './types.js';
+export {
+  createTagInput,
+  createChipFilter,
+  createChipCell,
+  tagInput,
+  chipFilter,
+  chipCell,
+} from './renderers/tag-renderers.js';
+export {
+  DEFAULT_TAG_MESSAGES,
+  DEFAULT_TAG_SETTINGS,
+  resolveTagSettings,
+  toContainsFilter,
+  fromContainsFilter,
+  createSuggestionController,
+} from './tag-logic.js';
+export type {
+  TagMessages,
+  TagSettings,
+  TagValue,
+  TagOption,
+  SuggestionState,
+  SuggestionController,
+} from './tag-logic.js';
+export type {
+  CellProps,
+  FormFieldProps,
+  FilterFieldProps,
+  FieldBinding,
+  BoundFieldProps,
+  FieldRenderContext,
+} from './types.js';
