@@ -57,7 +57,10 @@ for (const col of columns) {
 
 | Renderer | Zod Type | Description |
 |----------|----------|-------------|
-| TextInput | string | Text input with label |
+| TextInput | string | Text input with label; a history button when the field has history |
+| TextareaInput | string + `editWidget: 'textarea'` | Multi-line text (`description`, `notes`... or declared); a history button when the field has history |
+
+**Changed in this version:** every free-text string field whose `editWidget` is `'textarea'` (which `@zodal/core` infers for names such as `description`, `notes`, `body`, or that you declare) now renders as a `<textarea>` (`TextareaInput`), with or without history. It used to render as a single-line `TextInput`. This matches zodal-ui-shadcn. To keep the old behaviour for a field, give it another `editWidget`, or register your own renderer above `PRIORITY.LIBRARY`.
 | NumberInput | number, int, float | Number input |
 | CheckboxInput | boolean | Checkbox with label |
 | SelectInput | enum | Dropdown with options |
@@ -132,6 +135,37 @@ Resolve each `toFormConfig` field through `formFieldAffordance`, so a closed cho
 ```ts
 const render = registry.resolve(formFieldAffordance(collection.fieldAffordances[config.name], config), { mode: 'form' });
 ```
+
+## Field input history
+
+A text or textarea field whose config has `history` (from the `history` affordance: `fields: { lyrics: { history: true } }`) shows a history button when the render context carries a store, `{ mode: 'form', history }`, passed to the renderer as `context`. The store is `createFieldHistory()` from `@zodal/store`, or anything of the `FieldHistoryStore` shape:
+
+```ts
+import { createFieldHistory } from '@zodal/store';
+import { createLocalStorageProvider } from '@zodal/store-localstorage';
+
+const history = createFieldHistory({
+  provider: createLocalStorageProvider({ storageKey: 'my-app.field-history' }),
+});
+const ctx = { mode: 'form', history };
+const render = registry.resolve(formFieldAffordance(fa, config), ctx);
+form.append(render({ field: { value, onChange }, config, context: ctx }));
+```
+
+- The button (lucide's `rotate-ccw-clock`, inline) is hidden while the history is empty, and named "<label> history".
+- It opens a native `popover` listing past values: the first line, "+N lines" and a relative time per row, pinned first, a filter above 7 entries, a full-value preview, pin and remove per row (Shift+Delete removes the active row), and "Clear history" with Undo.
+- Picking an entry records the current value first (so a pick never loses typing), writes the picked value into the field and calls `field.onChange`, closes the list and returns focus to the field. Alt+ArrowDown on the field opens the list.
+- Controls are at least 44 px under a coarse pointer (`minTarget` to change it); on a narrow screen the list is a bottom sheet.
+- "Clear history" clears at once; Undo stays offered for 10 seconds, even if the list is closed and reopened. A store failure (a pick, a pin, a clear) is shown in the list, and a refused pick leaves the field as it was.
+- The list re-reads on the store's optional `subscribe`, so a `recordUse` on submit shows up at once. Once the button has been in the document and leaves it (a vanilla host re-rendering its form), it stops following the store and removes its listeners. A host that rebuilds its form can do that at once with `destroyFieldHistory(oldForm)`.
+- A secret never gets history: a field with `secret`, a `password` input, or a secret-looking name (`apiKey`, `db_password`, `access_token`...) draws no button, whatever its config says.
+- After a pick, focus goes to the field before `field.onChange` runs; if the host re-renders on change, focus moves to the new field with the same `id`.
+
+The default look is `HISTORY_CSS` (zero-specificity `.zodal-history-*` rules, added once; an empty `<style data-zodal-history></style>` opts out).
+
+For your own fields: `attachFieldHistory({ history, config, label, field, onChange })` returns `{ element, state, open, close, destroy }` (or `null` without a store or config): put `element` beside the field. `createFieldHistoryState(history, scope, { max })` is the headless part (entries kept current, record/remove/pin/clear/restore, `onChange`). Record what was used with `recordUse(fields, values, { history })` and start over with `startNewItem(...)`, both from `@zodal/ui`. The types (`FieldHistoryStore`, `HistoryEntry`) are declared here structurally until a `@zodal/ui` that has them is on npm. Design: [field-input-history.md](https://github.com/i2mint/zodal/blob/main/docs/research/field-input-history.md).
+
+The icon's path data is lucide's `rotate-ccw-clock` (ISC License, Copyright (c) Lucide Icons and Contributors); its notice is kept in `src/field-history.ts` and in the built bundle.
 
 ## Options forms (settings, provider options)
 
