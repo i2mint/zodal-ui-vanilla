@@ -23,3 +23,19 @@ export type { FeedbackLevel, ActionStatus, ActionFeedbackState, ActionFeedbackOp
 // The copy control (the `copyable` affordance)
 export { copyButton, copyField, copyText, installCopyStyles, COPY_CSS, COPIED_MS } from './copy.js';
 export type { CopyButtonOptions, CopyFieldOptions, CopyOutcome } from './copy.js';
+export {
+  attachFieldHistory,
+  createFieldHistoryState,
+  historyIcon,
+  historyLine,
+  relativeTime,
+  installHistoryStyles,
+  HISTORY_CSS,
+  HISTORY_FILTER_THRESHOLD,
+  HISTORY_UNDO_MS,
+  HISTORY_TOUCH_TARGET_PX,
+} from './field-history.js';
+export type { FieldHistoryOptions, FieldHistoryHandle, FieldHistoryState } from './field-history.js';
+export { fieldHistoryOf, DEFAULT_HISTORY_MAX } from './history-types.js';
+export type { FieldHistoryStore, HistoryEntry, HistoryReason, ResolvedFieldHistory } from './history-types.js';
+export type { FieldRenderContext } from './types.js';

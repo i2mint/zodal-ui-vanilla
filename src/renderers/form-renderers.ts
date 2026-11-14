@@ -8,6 +8,22 @@ import type { RendererEntry } from '@zodal/ui';
 import { el } from '../dom.js';
 import type { FormFieldProps } from '../types.js';
 import { copyField, installCopyStyles } from '../copy.js';
+import { attachFieldHistory, type FieldHistoryHandle } from '../field-history.js';
+import { fieldHistoryOf } from '../history-types.js';
+
+/** The history control for a text field, when the context has a store and the config asks for history. */
+function historyFor(props: FormFieldProps, field: HTMLInputElement | HTMLTextAreaElement): FieldHistoryHandle | null {
+  const { config, context } = props;
+  const history = fieldHistoryOf(config);
+  if (!context?.history || !history || config.disabled) return null;
+  return attachFieldHistory({
+    history: context.history,
+    config: history,
+    label: config.label,
+    field,
+    onChange: (v) => props.field.onChange(v),
+  });
+}
 
 /**
  * `minlength` / `maxlength` from `FormFieldConfig.minLength` / `maxLength` (i2mint/zodal#84),
@@ -33,20 +49,46 @@ export function fromDateInputValue(s: string): Date | undefined {
   return s ? new Date(`${s}T00:00:00.000Z`) : undefined;
 }
 
-function textInput({ field, config }: FormFieldProps): HTMLElement {
+/** A single-line text input; with history, the history button sits at its inline end, outside the box. */
+function textInput(props: FormFieldProps): HTMLElement {
+  const { field, config } = props;
+  const input = el('input', {
+    id: config.name,
+    type: 'text',
+    value: String(field.value ?? ''),
+    class: 'zodal-input',
+    placeholder: config.placeholder,
+    required: config.required,
+    disabled: config.disabled,
+    ...lengthAttrs(config),
+    onInput: (e: Event) => field.onChange((e.target as HTMLInputElement).value),
+  }) as HTMLInputElement;
+  const history = historyFor(props, input);
   return el('div', { class: 'zodal-field' },
     el('label', { for: config.name, class: 'zodal-label' }, config.label),
-    el('input', {
-      id: config.name,
-      type: 'text',
-      value: String(field.value ?? ''),
-      class: 'zodal-input',
-      placeholder: config.placeholder,
-      required: config.required,
-      disabled: config.disabled,
-      ...lengthAttrs(config),
-      onInput: (e: Event) => field.onChange((e.target as HTMLInputElement).value),
-    }),
+    history ? el('div', { class: 'zodal-history-row' }, input, history.element) : input,
+    config.helpText ? el('p', { class: 'zodal-help' }, config.helpText) : null,
+  );
+}
+
+/** Multi-line text (`editWidget: 'textarea'`); with history, the history button sits at its top-right, outside the box. */
+function textareaInput(props: FormFieldProps): HTMLElement {
+  const { field, config } = props;
+  const textarea = el('textarea', {
+    id: config.name,
+    class: 'zodal-input zodal-textarea',
+    placeholder: config.placeholder,
+    required: config.required,
+    disabled: config.disabled,
+    ...lengthAttrs(config),
+    onInput: (e: Event) => field.onChange((e.target as HTMLTextAreaElement).value),
+  }) as HTMLTextAreaElement;
+  textarea.value = String(field.value ?? '');
+  const history = historyFor(props, textarea);
+  const label = el('label', { for: config.name, class: 'zodal-label' }, config.label);
+  return el('div', { class: 'zodal-field' },
+    history ? el('div', { class: 'zodal-field-head' }, label, history.element) : label,
+    textarea,
     config.helpText ? el('p', { class: 'zodal-help' }, config.helpText) : null,
   );
 }
@@ -191,6 +233,15 @@ export const formRenderers: RendererEntry<FormRenderer>[] = [
     tester: (field, ctx) => ctx.mode === 'form' && field.zodType === 'string' ? PRIORITY.DEFAULT : -1,
     renderer: textInput,
     name: 'TextInput',
+  },
+  {
+    // editWidget: 'textarea' on free text, above the plain text input. Only free text: a `notes`
+    // array or a `description` enum may also be marked 'textarea', and content keeps its own.
+    tester: (field, ctx) =>
+      ctx.mode === 'form' && field.editWidget === 'textarea' && field.zodType === 'string'
+      && (field as { storageRole?: string }).storageRole !== 'content' ? PRIORITY.LIBRARY : -1,
+    renderer: textareaInput,
+    name: 'TextareaInput',
   },
   {
     tester: (field, ctx) => ctx.mode === 'form' && ['number', 'int', 'float'].includes(field.zodType) ? PRIORITY.DEFAULT : -1,
