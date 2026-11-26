@@ -71,7 +71,12 @@ function fakeStore(seed: Array<[string, string]> = []) {
   return { store, calls, all: () => entries };
 }
 
-const coarsePointer = () => vi.spyOn(window, 'matchMedia' as any).mockImplementation(((q: string) => ({
+// jsdom has no matchMedia, and vi.spyOn refuses to spy on a missing function.
+const coarsePointer = () => {
+  if (typeof window.matchMedia !== 'function') (window as any).matchMedia = () => ({ matches: false });
+  return coarsePointerSpy();
+};
+const coarsePointerSpy = () => vi.spyOn(window, 'matchMedia' as any).mockImplementation(((q: string) => ({
   matches: q === '(pointer: coarse)', media: q, addEventListener() {}, removeEventListener() {},
 })) as any);
 
